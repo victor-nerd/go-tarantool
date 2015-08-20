@@ -148,7 +148,11 @@ func (conn *Connection) CallAsync(functionName string, tuple []interface{}) *Fut
 //
 // To be implemented
 //
-func (conn *Connection) Auth(key, tuple []interface{}) (resp *Response, err error) {
+func (conn *Connection) Auth(user string, tuple []interface{}) (resp *Response, err error) {
+	request := conn.NewRequest(AuthRequest)
+	request.body[KeyUserName] = user
+	request.body[KeyTuple] = tuple
+	resp, err = request.perform()
 	return
 }
 
@@ -204,6 +208,7 @@ func (req *Request) future() (f *Future) {
 	}
 
 	req.conn.mutex.Lock()
+
 	if req.conn.closed {
 		req.conn.mutex.Unlock()
 		f.err = errors.New("using closed connection")

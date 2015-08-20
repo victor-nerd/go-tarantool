@@ -25,6 +25,7 @@ var opts = Opts{Timeout: 500 * time.Millisecond}
 
 const N = 500
 
+
 func BenchmarkClientSerial(b *testing.B) {
 	var err error
 
@@ -248,9 +249,29 @@ func BenchmarkClientParrallel(b *testing.B) {
 }
 
 func TestClient(t *testing.T) {
-	client, err := Connect(server, Opts{})
+
+	// Invalid user
+	client, err := Connect(server, Opts{User: "invalid_user", Pass: "test"})
+	if err == nil {
+		t.Errorf("Should fail with incorrect password")
+	}
+
+	// Invalid pass
+	client, err = Connect(server, Opts{User: "test", Pass: "invalid_pass"})
+	if err == nil {
+		t.Errorf("Should fail with incorrect user")
+	}
+
+	// Invalid user/pass
+	client, err = Connect(server, Opts{User: "invalid_user", Pass: "invalid_pass"})
+	if err == nil {
+		t.Errorf("Should fail with incorrect user and password")
+	}
+
+	// Valid user/pass
+	client, err = Connect(server, Opts{User: "test", Pass: "test"})
 	if err != nil {
-		t.Errorf("No connection available")
+		t.Errorf("Should pass but error is [%s]", err.Error())
 	}
 
 	var resp *Response
@@ -340,5 +361,4 @@ func TestClient(t *testing.T) {
 	fmt.Println("Code", resp.Code)
 	fmt.Println("Data", resp.Data)
 	fmt.Println("----")
-
 }

@@ -10,6 +10,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"crypto/sha1"
+	"encoding/base64"
 )
 
 type Connection struct {
@@ -35,6 +37,8 @@ type Greeting struct {
 type Opts struct {
 	Timeout   time.Duration // milliseconds
 	Reconnect time.Duration // milliseconds
+	User      string
+	Pass      string
 }
 
 func Connect(addr string, opts Opts) (conn *Connection, err error) {
@@ -58,6 +62,15 @@ func Connect(addr string, opts Opts) (conn *Connection, err error) {
 
 	go conn.writer()
 	go conn.reader()
+
+	// Send auth request if needed
+	if opts.User != "" {
+		err = conn.auth()
+		if err != nil {
+			return
+		}
+	}
+
 	return
 }
 
@@ -84,8 +97,53 @@ func (conn *Connection) dial() (err error) {
 		return
 	}
 	conn.Greeting.version = bytes.NewBuffer(greeting[:64]).String()
-	conn.Greeting.auth = bytes.NewBuffer(greeting[64:]).String()
+	conn.Greeting.auth = bytes.NewBuffer(greeting[64:108]).String()
 	return
+}
+
+func (conn *Connection) auth() (err error) {
+	scr, err := scramble(conn.Greeting.auth, conn.opts.Pass)
+	if err != nil {
+		return
+	}
+	_, err = conn.Auth(conn.opts.User, []interface{}{string("chap-sha1"), string(scr)})
+	return
+}
+
+func scramble(encoded_salt, pass string) (scramble []byte, err error) {
+	/* ==================================================================
+		Acording to: http://tarantool.org/doc/dev_guide/box-protocol.html
+
+		salt = base64_decode(encoded_salt);
+	    step_1 = sha1(password);
+	    step_2 = sha1(step_1);
+	    step_3 = sha1(salt, step_2);
+	    scramble = xor(step_1, step_3);
+	    return scramble;
+
+	===================================================================== */
+	scrambleSize := sha1.Size // == 20
+
+    salt, err := base64.StdEncoding.DecodeString(encoded_salt)
+	if err != nil {
+	    return
+	}
+	step_1 := sha1.Sum([]byte(pass))
+	step_2 := sha1.Sum(step_1[0:])
+	hash := sha1.New() // may be create it once per connection ?
+	hash.Write(salt[0:scrambleSize])
+	hash.Write(step_2[0:])
+	step_3 := hash.Sum(nil)
+	
+	return xor(step_1[0:], step_3[0:], scrambleSize), nil
+}
+
+func xor(left, right []byte, size int) []byte {
+	result := make([]byte, size)
+	for i := 0; i < size ; i++ {
+		result[i] = left[i] ^ right[i]
+	}
+	return result
 }
 
 func (conn *Connection) createConnection() (r io.Reader, w *bufio.Writer) {
