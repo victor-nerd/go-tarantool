@@ -10,8 +10,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	"crypto/sha1"
-	"encoding/base64"
 )
 
 type Connection struct {
@@ -55,23 +53,10 @@ func Connect(addr string, opts Opts) (conn *Connection, err error) {
 		opts:       opts,
 	}
 
-	err = conn.dial()
-	if err != nil {
-		return
-	}
-
 	go conn.writer()
 	go conn.reader()
 
-	// Send auth request if needed
-	if opts.User != "" {
-		err = conn.auth()
-		if err != nil {
-			return
-		}
-	}
-
-	return
+	return conn, err
 }
 
 func (conn *Connection) Close() (err error) {
@@ -82,80 +67,110 @@ func (conn *Connection) Close() (err error) {
 }
 
 func (conn *Connection) dial() (err error) {
+	conn.mutex.Lock()
+	defer conn.mutex.Unlock()
+
+	if conn.connection != nil {
+		log.Println("dial  conn.connection != nil - return")
+		return
+	}
+	
 	connection, err := net.Dial("tcp", conn.addr)
 	if err != nil {
+		log.Println("dial  net.Dial error - return")
 		return
 	}
 	connection.(*net.TCPConn).SetNoDelay(true)
-	conn.connection = connection
-	conn.r = bufio.NewReaderSize(conn.connection, 128*1024)
-	conn.w = bufio.NewWriter(conn.connection)
+	r := bufio.NewReaderSize(connection, 128*1024)
+	w := bufio.NewWriter(connection)
 	greeting := make([]byte, 128)
 	// TODO: read all
-	_, err = conn.connection.Read(greeting)
+	_, err = connection.Read(greeting)
 	if err != nil {
 		return
 	}
 	conn.Greeting.version = bytes.NewBuffer(greeting[:64]).String()
 	conn.Greeting.auth = bytes.NewBuffer(greeting[64:108]).String()
-	return
-}
 
-func (conn *Connection) auth() (err error) {
-	scr, err := scramble(conn.Greeting.auth, conn.opts.Pass)
-	if err != nil {
+	// Auth
+	if err = conn.auth(r, w); err != nil {
 		return
 	}
-	_, err = conn.Auth(conn.opts.User, []interface{}{string("chap-sha1"), string(scr)})
+
+	// Only if connected and authenticated
+	conn.connection = connection // TODO: think about atomic LoadPointer/StorePointer
+	conn.r = r
+	conn.w = w
+
 	return
 }
 
-func scramble(encoded_salt, pass string) (scramble []byte, err error) {
-	/* ==================================================================
-		Acording to: http://tarantool.org/doc/dev_guide/box-protocol.html
-
-		salt = base64_decode(encoded_salt);
-	    step_1 = sha1(password);
-	    step_2 = sha1(step_1);
-	    step_3 = sha1(salt, step_2);
-	    scramble = xor(step_1, step_3);
-	    return scramble;
-
-	===================================================================== */
-	scrambleSize := sha1.Size // == 20
-
-    salt, err := base64.StdEncoding.DecodeString(encoded_salt)
-	if err != nil {
-	    return
+func (conn *Connection) auth(r io.Reader, w *bufio.Writer) (err error) {
+	if conn.opts.User == "" {
+		return	// without authentication [guest session]
 	}
-	step_1 := sha1.Sum([]byte(pass))
-	step_2 := sha1.Sum(step_1[0:])
-	hash := sha1.New() // may be create it once per connection ?
-	hash.Write(salt[0:scrambleSize])
-	hash.Write(step_2[0:])
-	step_3 := hash.Sum(nil)
-	
-	return xor(step_1[0:], step_3[0:], scrambleSize), nil
+	if r == nil || w == nil {
+		return errors.New("auth: reader/writer not ready")
+	}
+	if conn.Greeting.auth == "" {
+		return errors.New("auth: empty greeting")
+	}
+	scr, err := scramble(conn.Greeting.auth, conn.opts.Pass)
+	if err != nil {
+		return errors.New("auth: scrambling failure " + err.Error())
+	}
+	if err = conn.writeAuthRequest(w, scr); err != nil {
+		return
+	}
+	if err = conn.readAuthResponse(r); err !=nil {
+		return
+	}
+	return
 }
 
-func xor(left, right []byte, size int) []byte {
-	result := make([]byte, size)
-	for i := 0; i < size ; i++ {
-		result[i] = left[i] ^ right[i]
+func (conn *Connection) writeAuthRequest(w *bufio.Writer, scramble []byte) (err error) {
+	request := conn.NewRequest(AuthRequest)
+	request.body[KeyUserName] = conn.opts.User
+	request.body[KeyTuple] = []interface{}{string("chap-sha1"), string(scramble)}
+	packet, err := request.pack()
+	if err != nil {
+		return errors.New("auth: pack error " + err.Error())
 	}
-	return result
+	if err := write(w, packet); err != nil {
+		return errors.New("auth: write error " + err.Error())
+	}
+	if err = w.Flush(); err != nil {
+		return errors.New("auth: flush error " + err.Error())
+	}
+	return
+}
+
+func (conn *Connection) readAuthResponse(r io.Reader) (err error) {
+	resp_bytes, err := read(r)
+	if err != nil {
+		return errors.New("auth: read error " + err.Error())
+	}
+	resp := Response{buf:smallBuf{b:resp_bytes}}
+	err = resp.decodeHeader()
+	if err != nil {
+		return errors.New("auth: decode response header error " + err.Error())
+	}
+	err = resp.decodeBody()
+	if err != nil {
+		return errors.New("auth: decode response body error " + err.Error())
+	}
+	return
 }
 
 func (conn *Connection) createConnection() (r io.Reader, w *bufio.Writer) {
-	conn.mutex.Lock()
-	defer conn.mutex.Unlock()
-	for conn.connection == nil {
+	// mutex.lock() replaced to dial() and connectoinIsNil() : finely granular locking
+	for conn.connectionIsNil() {
 		if conn.closed {
 			return
 		}
 		err := conn.dial()
 		if err == nil {
-			break
+			break			
 		} else if conn.opts.Reconnect > 0 {
 			time.Sleep(conn.opts.Reconnect)
 		} else {
@@ -164,6 +179,15 @@ func (conn *Connection) createConnection() (r io.Reader, w *bufio.Writer) {
 	}
 	return conn.r, conn.w
 }
+
+
+func (conn *Connection) connectionIsNil() bool {
+	// TODO: think about atomic LoadPointer/StorePointer
+	conn.mutex.Lock()
+	defer conn.mutex.Unlock()
+	return conn.connection == nil
+}
+
 
 func (conn *Connection) closeConnection(neterr error) (err error) {
 	conn.mutex.Lock()
