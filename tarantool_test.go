@@ -256,17 +256,6 @@ func TestClient(t *testing.T) {
 		t.Errorf("Should pass but error is [%s]", err.Error())
 	}
 
-	// Wait connection 
-	/*i := 10
-	for client.connectionIsNil() {
-		time.Sleep(500 * time.Millisecond)
-		i--
-		if i == 0 {
-			t.Errorf("Connection failed")
-			return
-		}
-	}*/
-
 	var resp *Response
 
 	resp, err = client.Ping()
