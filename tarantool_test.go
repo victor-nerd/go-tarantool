@@ -250,29 +250,22 @@ func BenchmarkClientParrallel(b *testing.B) {
 
 func TestClient(t *testing.T) {
 
-	// Invalid user
-	client, err := Connect(server, Opts{User: "invalid_user", Pass: "test"})
-	if err == nil {
-		t.Errorf("Should fail with incorrect password")
-	}
-
-	// Invalid pass
-	client, err = Connect(server, Opts{User: "test", Pass: "invalid_pass"})
-	if err == nil {
-		t.Errorf("Should fail with incorrect user")
-	}
-
-	// Invalid user/pass
-	client, err = Connect(server, Opts{User: "invalid_user", Pass: "invalid_pass"})
-	if err == nil {
-		t.Errorf("Should fail with incorrect user and password")
-	}
-
 	// Valid user/pass
-	client, err = Connect(server, Opts{User: "test", Pass: "test"})
+	client, err := Connect(server, Opts{User: "test", Pass: "test"})
 	if err != nil {
 		t.Errorf("Should pass but error is [%s]", err.Error())
 	}
+
+	// Wait connection 
+	/*i := 10
+	for client.connectionIsNil() {
+		time.Sleep(500 * time.Millisecond)
+		i--
+		if i == 0 {
+			t.Errorf("Connection failed")
+			return
+		}
+	}*/
 
 	var resp *Response
 
