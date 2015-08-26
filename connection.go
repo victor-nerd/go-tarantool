@@ -71,8 +71,7 @@ func (conn *Connection) dial() (err error) {
 	defer conn.mutex.Unlock()
 
 	if conn.connection != nil {
-		log.Println("dial  conn.connection != nil - return")
-		return
+		return // in case connection was created by enother goroutine (reader or writer)
 	}
 	
 	connection, err := net.Dial("tcp", conn.addr)
