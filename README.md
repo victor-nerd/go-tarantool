@@ -8,7 +8,7 @@
 package main
 
 import (
-  "github.com/fl00r/go-tarantool-1.6"
+  "github.com/tarantool/go-tarantool"
   "fmt"
 )
 
