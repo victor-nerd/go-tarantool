@@ -164,7 +164,7 @@ func (conn *Connection) createConnection() (r io.Reader, w *bufio.Writer) {
 		}
 		err := conn.dial()
 		if err == nil {
-			break			
+			break
 		} else if conn.opts.Reconnect > 0 {
 			time.Sleep(conn.opts.Reconnect)
 		} else {
