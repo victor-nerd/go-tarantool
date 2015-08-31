@@ -17,3 +17,5 @@ end
 local console = require 'console'
 console.listen '0.0.0.0:33015'
 
+box.schema.user.revoke('guest', 'read,write,execute', 'universe')
+

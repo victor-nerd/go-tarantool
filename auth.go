@@ -7,14 +7,14 @@ import (
 
 func scramble(encoded_salt, pass string) (scramble []byte, err error) {
 	/* ==================================================================
-		Acording to: http://tarantool.org/doc/dev_guide/box-protocol.html
+		According to: http://tarantool.org/doc/dev_guide/box-protocol.html
 
 		salt = base64_decode(encoded_salt);
-	    step_1 = sha1(password);
-	    step_2 = sha1(step_1);
-	    step_3 = sha1(salt, step_2);
-	    scramble = xor(step_1, step_3);
-	    return scramble;
+		step_1 = sha1(password);
+		step_2 = sha1(step_1);
+		step_3 = sha1(salt, step_2);
+		scramble = xor(step_1, step_3);
+		return scramble;
 
 	===================================================================== */
 	scrambleSize := sha1.Size // == 20

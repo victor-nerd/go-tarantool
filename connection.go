@@ -67,16 +67,8 @@ func (conn *Connection) Close() (err error) {
 }
 
 func (conn *Connection) dial() (err error) {
-	conn.mutex.Lock()
-	defer conn.mutex.Unlock()
-
-	if conn.connection != nil {
-		return // in case connection was created by enother goroutine (reader or writer)
-	}
-	
 	connection, err := net.Dial("tcp", conn.addr)
 	if err != nil {
-		log.Println("dial  net.Dial error - return")
 		return
 	}
 	connection.(*net.TCPConn).SetNoDelay(true)
@@ -86,6 +78,7 @@ func (conn *Connection) dial() (err error) {
 	// TODO: read all
 	_, err = connection.Read(greeting)
 	if err != nil {
+		connection.Close()
 		return
 	}
 	conn.Greeting.version = bytes.NewBuffer(greeting[:64]).String()
@@ -93,11 +86,12 @@ func (conn *Connection) dial() (err error) {
 
 	// Auth
 	if err = conn.auth(r, w); err != nil {
+		connection.Close()
 		return
 	}
 
 	// Only if connected and authenticated
-	conn.connection = connection // TODO: think about atomic LoadPointer/StorePointer
+	conn.connection = connection
 	conn.r = r
 	conn.w = w
 
@@ -162,8 +156,9 @@ func (conn *Connection) readAuthResponse(r io.Reader) (err error) {
 }
 
 func (conn *Connection) createConnection() (r io.Reader, w *bufio.Writer) {
-	// mutex.lock() replaced to dial() and connectoinIsNil() : finely granular locking
-	for conn.connectionIsNil() {
+	conn.mutex.Lock()
+	defer conn.mutex.Unlock()
+	for conn.connection == nil {
 		if conn.closed {
 			return
 		}
@@ -179,14 +174,12 @@ func (conn *Connection) createConnection() (r io.Reader, w *bufio.Writer) {
 	return conn.r, conn.w
 }
 
-
+/*
 func (conn *Connection) connectionIsNil() bool {
-	// TODO: think about atomic LoadPointer/StorePointer
-	conn.mutex.Lock()
-	defer conn.mutex.Unlock()
+	// function to encapsulate architecture depentent things
 	return conn.connection == nil
 }
-
+*/
 
 func (conn *Connection) closeConnection(neterr error) (err error) {
 	conn.mutex.Lock()

@@ -208,7 +208,7 @@ func (req *Request) future() (f *Future) {
 	}
 
 	// check connection ready to process packets
-	if f.conn.connectionIsNil() {
+	if f.conn.connection == nil {
 		close(f.c)
 		f.err = errors.New("client connection is not ready")
 		return 	// we shouldn't perform this request
@@ -220,7 +220,6 @@ func (req *Request) future() (f *Future) {
 		return
 	}
 
-	// TODO: conn.connectionIsClosed() with mutex inside
 	req.conn.mutex.Lock()
 	if req.conn.closed {
 		req.conn.mutex.Unlock()
@@ -229,8 +228,6 @@ func (req *Request) future() (f *Future) {
 		return
 	}
 
-	// TODO: conn.addRequest() with mutex inside or think about message passing
-	// Gophers rule: "Share memory by communicating; don't communicate by sharing memory."
 	req.conn.requests[req.requestId] = f
 	req.conn.mutex.Unlock()
 	req.conn.packets <- (packet)
