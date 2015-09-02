@@ -146,22 +146,6 @@ func (conn *Connection) CallAsync(functionName string, tuple []interface{}) *Fut
 }
 
 //
-// To be implemented
-//
-func (conn *Connection) Auth(user string, tuple []interface{}) (resp *Response, err error) {
-	// This request does not make sense
-	// It should be a part of connecting process:
-	//     * phisical connection	- tcp
-	//     * logical connection 	- authentication
-	// Functionality implemented in Connection.dial()
-	request := conn.NewRequest(AuthRequest)
-	request.body[KeyUserName] = user
-	request.body[KeyTuple] = tuple
-	resp, err = request.perform()
-	return
-}
-
-//
 // private
 //
 
@@ -208,10 +192,10 @@ func (req *Request) future() (f *Future) {
 	}
 
 	// check connection ready to process packets
-	if f.conn.connection == nil {
+	if c := f.conn.c; c == nil {
 		close(f.c)
 		f.err = errors.New("client connection is not ready")
-		return 	// we shouldn't perform this request
+		return // we shouldn't perform this request
 	}
 
 	var packet []byte
@@ -273,7 +257,7 @@ func (f *Future) Get() (*Response, error) {
 	return &f.resp, f.err
 }
 
-func (f *Future) GetTyped(r interface{}) (error) {
+func (f *Future) GetTyped(r interface{}) error {
 	f.wait()
 	if f.err != nil {
 		return f.err

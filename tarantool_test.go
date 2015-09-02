@@ -19,12 +19,11 @@ var tuple1 = []interface{}{12, "Hello World", "Olga"}
 var tuple2 = []interface{}{12, "Hello Mars", "Anna"}
 var upd_tuple = []interface{}{[]interface{}{"=", 1, "Hello Moon"}, []interface{}{"#", 2, 1}}
 
-var functionName = "box.cfg()"
+var functionName = "box.info"
 var functionTuple = []interface{}{"box.schema.SPACE_ID"}
 var opts = Opts{Timeout: 500 * time.Millisecond}
 
 const N = 500
-
 
 func BenchmarkClientSerial(b *testing.B) {
 	var err error
