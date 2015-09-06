@@ -13,18 +13,18 @@ import (
 )
 
 type Connection struct {
-	addr       string
-	connection net.Conn
-	r          io.Reader
-	w          *bufio.Writer
-	mutex      *sync.Mutex
-	requestId  uint32
-	Greeting   *Greeting
-	requests   map[uint32]*Future
-	packets    chan []byte
-	control    chan struct{}
-	opts       Opts
-	closed     bool
+	addr      string
+	c         *net.TCPConn
+	r         *bufio.Reader
+	w         *bufio.Writer
+	mutex     *sync.Mutex
+	requestId uint32
+	Greeting  *Greeting
+	requests  map[uint32]*Future
+	packets   chan []byte
+	control   chan struct{}
+	opts      Opts
+	closed    bool
 }
 
 type Greeting struct {
@@ -33,31 +33,34 @@ type Greeting struct {
 }
 
 type Opts struct {
-	Timeout   time.Duration // milliseconds
-	Reconnect time.Duration // milliseconds
+	Timeout       time.Duration // milliseconds
+	Reconnect     time.Duration // milliseconds
+	MaxReconnects uint
+	User          string
+	Pass          string
 }
 
 func Connect(addr string, opts Opts) (conn *Connection, err error) {
 
 	conn = &Connection{
-		addr:       addr,
-		connection: nil,
-		mutex:      &sync.Mutex{},
-		requestId:  0,
-		Greeting:   &Greeting{},
-		requests:   make(map[uint32]*Future),
-		packets:    make(chan []byte, 64),
-		control:    make(chan struct{}),
-		opts:       opts,
+		addr:      addr,
+		mutex:     &sync.Mutex{},
+		requestId: 0,
+		Greeting:  &Greeting{},
+		requests:  make(map[uint32]*Future),
+		packets:   make(chan []byte, 64),
+		control:   make(chan struct{}),
+		opts:      opts,
 	}
 
-	err = conn.dial()
+	_, _, err = conn.createConnection()
 	if err != nil {
-		return
+		return nil, err
 	}
 
 	go conn.writer()
 	go conn.reader()
+
 	return
 }
 
@@ -73,48 +76,121 @@ func (conn *Connection) dial() (err error) {
 	if err != nil {
 		return
 	}
-	connection.(*net.TCPConn).SetNoDelay(true)
-	conn.connection = connection
-	conn.r = bufio.NewReaderSize(conn.connection, 128*1024)
-	conn.w = bufio.NewWriter(conn.connection)
+	c := connection.(*net.TCPConn)
+	c.SetNoDelay(true)
+	r := bufio.NewReaderSize(c, 128*1024)
+	w := bufio.NewWriter(c)
 	greeting := make([]byte, 128)
-	// TODO: read all
-	_, err = conn.connection.Read(greeting)
+	_, err = io.ReadFull(r, greeting)
 	if err != nil {
+		c.Close()
 		return
 	}
 	conn.Greeting.version = bytes.NewBuffer(greeting[:64]).String()
-	conn.Greeting.auth = bytes.NewBuffer(greeting[64:]).String()
+	conn.Greeting.auth = bytes.NewBuffer(greeting[64:108]).String()
+
+	// Auth
+	if conn.opts.User != "" {
+		scr, err := scramble(conn.Greeting.auth, conn.opts.Pass)
+		if err != nil {
+			err = errors.New("auth: scrambling failure " + err.Error())
+			c.Close()
+			return err
+		}
+		if err = conn.writeAuthRequest(w, scr); err != nil {
+			c.Close()
+			return err
+		}
+		if err = conn.readAuthResponse(r); err != nil {
+			c.Close()
+			return err
+		}
+	}
+
+	// Only if connected and authenticated
+	conn.c = c
+	conn.r = r
+	conn.w = w
+
 	return
 }
 
-func (conn *Connection) createConnection() (r io.Reader, w *bufio.Writer) {
+func (conn *Connection) writeAuthRequest(w *bufio.Writer, scramble []byte) (err error) {
+	request := conn.NewRequest(AuthRequest)
+	request.body[KeyUserName] = conn.opts.User
+	request.body[KeyTuple] = []interface{}{string("chap-sha1"), string(scramble)}
+	packet, err := request.pack()
+	if err != nil {
+		return errors.New("auth: pack error " + err.Error())
+	}
+	if err := write(w, packet); err != nil {
+		return errors.New("auth: write error " + err.Error())
+	}
+	if err = w.Flush(); err != nil {
+		return errors.New("auth: flush error " + err.Error())
+	}
+	return
+}
+
+func (conn *Connection) readAuthResponse(r io.Reader) (err error) {
+	resp_bytes, err := read(r)
+	if err != nil {
+		return errors.New("auth: read error " + err.Error())
+	}
+	resp := Response{buf: smallBuf{b: resp_bytes}}
+	err = resp.decodeHeader()
+	if err != nil {
+		return errors.New("auth: decode response header error " + err.Error())
+	}
+	err = resp.decodeBody()
+	if err != nil {
+		switch err.(type) {
+		case Error:
+			return err
+		default:
+			return errors.New("auth: decode response body error " + err.Error())
+		}
+	}
+	return
+}
+
+func (conn *Connection) createConnection() (r *bufio.Reader, w *bufio.Writer, err error) {
 	conn.mutex.Lock()
 	defer conn.mutex.Unlock()
-	for conn.connection == nil {
-		if conn.closed {
-			return
-		}
-		err := conn.dial()
+	if conn.closed {
+		err = errors.New("connection already closed")
+		return
+	}
+	var reconnects uint
+	for {
+		err = conn.dial()
 		if err == nil {
 			break
 		} else if conn.opts.Reconnect > 0 {
-			time.Sleep(conn.opts.Reconnect)
+			if conn.opts.MaxReconnects > 0 && reconnects > conn.opts.MaxReconnects {
+				return
+			} else {
+				reconnects += 1
+				time.Sleep(conn.opts.Reconnect)
+				continue
+			}
 		} else {
 			return
 		}
 	}
-	return conn.r, conn.w
+	r = conn.r
+	w = conn.w
+	return
 }
 
 func (conn *Connection) closeConnection(neterr error) (err error) {
 	conn.mutex.Lock()
 	defer conn.mutex.Unlock()
-	if conn.connection == nil {
+	if conn.c == nil {
 		return
 	}
-	err = conn.connection.Close()
-	conn.connection = nil
+	err = conn.c.Close()
+	conn.c = nil
 	conn.r = nil
 	conn.w = nil
 	for rid, fut := range conn.requests {
@@ -127,6 +203,7 @@ func (conn *Connection) closeConnection(neterr error) (err error) {
 
 func (conn *Connection) writer() {
 	var w *bufio.Writer
+	var err error
 	for {
 		var packet []byte
 		select {
@@ -147,7 +224,7 @@ func (conn *Connection) writer() {
 			return
 		}
 		if w = conn.w; w == nil {
-			if _, w = conn.createConnection(); w == nil {
+			if _, w, err = conn.createConnection(); err != nil {
 				return
 			}
 		}
@@ -159,10 +236,11 @@ func (conn *Connection) writer() {
 }
 
 func (conn *Connection) reader() {
-	var r io.Reader
+	var r *bufio.Reader
+	var err error
 	for {
 		if r = conn.r; r == nil {
-			if r, _ = conn.createConnection(); r == nil {
+			if r, _, err = conn.createConnection(); err != nil {
 				return
 			}
 		}
@@ -171,7 +249,7 @@ func (conn *Connection) reader() {
 			conn.closeConnection(err)
 			continue
 		}
-		resp := Response{buf:smallBuf{b:resp_bytes}}
+		resp := Response{buf: smallBuf{b: resp_bytes}}
 		err = resp.decodeHeader()
 		//resp, err := newResponse(resp_bytes)
 		if err != nil {
@@ -191,8 +269,8 @@ func (conn *Connection) reader() {
 	}
 }
 
-func write(connection io.Writer, data []byte) (err error) {
-	l, err := connection.Write(data)
+func write(w io.Writer, data []byte) (err error) {
+	l, err := w.Write(data)
 	if err != nil {
 		return
 	}

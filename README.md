@@ -8,137 +8,64 @@
 package main
 
 import (
-  "github.com/tarantool/go-tarantool"
-  "fmt"
+	"github.com/tarantool/go-tarantool"
+	"log"
+	"time"
 )
 
 func main() {
-  server    := "127.0.0.1:3013"
-  spaceNo   := uint32(514)
-  indexNo   := uint32(0)
-  limit     := uint32(10)
-  offset    := uint32(0)
-  iterator  := tarantool.IterAll
-  key       := []interface{}{ 12 }
-  tuple1    := []interface{}{ 12, "Hello World", "Olga" }
-  tuple2    := []interface{}{ 12, "Hello Mars", "Anna" }
-  upd_tuple := []interface{}{ []interface{}{ "=", 1, "Hello Moon" }, []interface{}{ "#", 2, 1 } }
+	spaceNo := uint32(512)
+	indexNo := uint32(0)
+	tuple1 := []interface{}{12, "Hello World", "Olga"}
+	tuple2 := []interface{}{13, "99 bugs in code", "Anna"}
 
-  functionName  := "box.cfg()"
-  functionTuple := []interface{}{ "box.schema.SPACE_ID" }
+	server := "127.0.0.1:3013"
+	opts := tarantool.Opts{
+		Timeout:       500 * time.Millisecond,
+		Reconnect:     1 * time.Second,
+		MaxReconnects: 3,
+		User:          "test",
+		Pass:          "test",
+	}
+	client, err := tarantool.Connect(server, opts)
+	if err != nil {
+		log.Fatalf("Failed to connect: %s", err.Error())
+	}
 
+	resp, err := client.Ping()
+	log.Println(resp.Code)
+	log.Println(resp.Data)
+	log.Println(err)
 
-  client, err := tarantool.Connect(server)
+	resp, err = client.Insert(spaceNo, tuple1)
+	log.Println("Insert")
+	log.Println("Error", err)
+	log.Println("Code", resp.Code)
+	log.Println("Data", resp.Data)
 
-  var resp *tarantool.Response
+	resp, err = client.Replace(spaceNo, tuple2)
+	log.Println("Replace")
+	log.Println("Error", err)
+	log.Println("Code", resp.Code)
+	log.Println("Data", resp.Data)
 
-  resp, err = client.Ping()
-  fmt.Println("Ping")
-  fmt.Println("ERROR", err)
-  fmt.Println("Code", resp.Code)
-  fmt.Println("Data", resp.Data)
-  fmt.Println("----")
+	resp, err = client.Delete(spaceNo, indexNo, tuple1[0:1])
+	log.Println("Delete")
+	log.Println("Error", err)
+	log.Println("Code", resp.Code)
+	log.Println("Data", resp.Data)
 
-  resp, err = client.Insert(spaceNo, tuple1)
-  fmt.Println("Insert")
-  fmt.Println("ERROR", err)
-  fmt.Println("Code", resp.Code)
-  fmt.Println("Data", resp.Data)
-  fmt.Println("----")
+	resp, err = client.Select(spaceNo, indexNo, 0, 1, tarantool.IterEq, tuple2[0:1])
+	log.Println("Select")
+	log.Println("Error", err)
+	log.Println("Code", resp.Code)
+	log.Println("Data", resp.Data)
 
-  resp, err = client.Select(spaceNo, indexNo, offset, limit, iterator, key)
-  fmt.Println("Select")
-  fmt.Println("ERROR", err)
-  fmt.Println("Code", resp.Code)
-  fmt.Println("Data", resp.Data)
-  fmt.Println("----")
-
-  resp, err = client.Replace(spaceNo, tuple2)
-  fmt.Println("Replace")
-  fmt.Println("ERROR", err)
-  fmt.Println("Code", resp.Code)
-  fmt.Println("Data", resp.Data)
-  fmt.Println("----")
-
-  resp, err = client.Select(spaceNo, indexNo, offset, limit, iterator, key)
-  fmt.Println("Select")
-  fmt.Println("ERROR", err)
-  fmt.Println("Code", resp.Code)
-  fmt.Println("Data", resp.Data)
-  fmt.Println("----")
-
-  resp, err = client.Update(spaceNo, indexNo, key, upd_tuple)
-  fmt.Println("Update")
-  fmt.Println("ERROR", err)
-  fmt.Println("Code", resp.Code)
-  fmt.Println("Data", resp.Data)
-  fmt.Println("----")
-
-  resp, err = client.Select(spaceNo, indexNo, offset, limit, iterator, key)
-  fmt.Println("Select")
-  fmt.Println("ERROR", err)
-  fmt.Println("Code", resp.Code)
-  fmt.Println("Data", resp.Data)
-  fmt.Println("----")
-
-  resp, err = client.Delete(spaceNo, indexNo, key)
-  fmt.Println("Delete")
-  fmt.Println("ERROR", err)
-  fmt.Println("Code", resp.Code)
-  fmt.Println("Data", resp.Data)
-  fmt.Println("----")
-
-  resp, err = client.Call(functionName, functionTuple)
-  fmt.Println("Call")
-  fmt.Println("ERROR", err)
-  fmt.Println("Code", resp.Code)
-  fmt.Println("Data", resp.Data)
-  fmt.Println("----")
+	resp, err = client.Call("func_name", []interface{}{1, 2, 3})
+	log.Println("Call")
+	log.Println("Error", err)
+	log.Println("Code", resp.Code)
+	log.Println("Data", resp.Data)
 }
 
-// #=> Connecting to 127.0.0.1:3013 ...
-// #=> Connected ...
-// #=> Greeting ... Success
-// #=> Version: Tarantool 1.6.2-34-ga53cf4a
-// #=> 
-// #=> Insert
-// #=> ERROR <nil>
-// #=> Code 0
-// #=> Data [[12 Hello World Olga]]
-// #=> ----
-// #=> Select
-// #=> ERROR <nil>
-// #=> Code 0
-// #=> Data [[12 Hello World Olga]]
-// #=> ----
-// #=> Replace
-// #=> ERROR <nil>
-// #=> Code 0
-// #=> Data [[12 Hello Mars Anna]]
-// #=> ----
-// #=> Select
-// #=> ERROR <nil>
-// #=> Code 0
-// #=> Data [[12 Hello Mars Anna]]
-// #=> ----
-// #=> Update
-// #=> ERROR <nil>
-// #=> Code 0
-// #=> Data [[12 Hello Moon]]
-// #=> ----
-// #=> Select
-// #=> ERROR <nil>
-// #=> Code 0
-// #=> Data [[12 Hello Moon]]
-// #=> ----
-// #=> Delete
-// #=> ERROR <nil>
-// #=> Code 0
-// #=> Data [[12 Hello Moon]]
-// #=> ----
-// #=> Call
-// #=> ERROR Execute access denied for user 'guest' to function 'box.cfg()'
-// #=> Code 13570
-// #=> Data []
-// #=> ----
 ```
