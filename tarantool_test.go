@@ -19,7 +19,7 @@ var tuple1 = []interface{}{12, "Hello World", "Olga"}
 var tuple2 = []interface{}{12, "Hello Mars", "Anna"}
 var upd_tuple = []interface{}{[]interface{}{"=", 1, "Hello Moon"}, []interface{}{"#", 2, 1}}
 
-var functionName = "box.cfg()"
+var functionName = "box.info"
 var functionTuple = []interface{}{"box.schema.SPACE_ID"}
 var opts = Opts{Timeout: 500 * time.Millisecond}
 
@@ -248,9 +248,11 @@ func BenchmarkClientParrallel(b *testing.B) {
 }
 
 func TestClient(t *testing.T) {
-	client, err := Connect(server, Opts{})
+
+	// Valid user/pass
+	client, err := Connect(server, Opts{User: "test", Pass: "test"})
 	if err != nil {
-		t.Errorf("No connection available")
+		t.Errorf("Should pass but error is [%s]", err.Error())
 	}
 
 	var resp *Response
@@ -340,5 +342,4 @@ func TestClient(t *testing.T) {
 	fmt.Println("Code", resp.Code)
 	fmt.Println("Data", resp.Data)
 	fmt.Println("----")
-
 }

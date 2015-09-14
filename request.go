@@ -146,13 +146,6 @@ func (conn *Connection) CallAsync(functionName string, tuple []interface{}) *Fut
 }
 
 //
-// To be implemented
-//
-func (conn *Connection) Auth(key, tuple []interface{}) (resp *Response, err error) {
-	return
-}
-
-//
 // private
 //
 
@@ -197,6 +190,14 @@ func (req *Request) future() (f *Future) {
 		id:   req.requestId,
 		c:    make(chan struct{}),
 	}
+
+	// check connection ready to process packets
+	if c := f.conn.c; c == nil {
+		close(f.c)
+		f.err = errors.New("client connection is not ready")
+		return // we shouldn't perform this request
+	}
+
 	var packet []byte
 	if packet, f.err = req.pack(); f.err != nil {
 		close(f.c)
@@ -210,6 +211,7 @@ func (req *Request) future() (f *Future) {
 		close(f.c)
 		return
 	}
+
 	req.conn.requests[req.requestId] = f
 	req.conn.mutex.Unlock()
 	req.conn.packets <- (packet)
@@ -255,7 +257,7 @@ func (f *Future) Get() (*Response, error) {
 	return &f.resp, f.err
 }
 
-func (f *Future) GetTyped(r interface{}) (error) {
+func (f *Future) GetTyped(r interface{}) error {
 	f.wait()
 	if f.err != nil {
 		return f.err
