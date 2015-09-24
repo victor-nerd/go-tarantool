@@ -18,7 +18,7 @@ func (resp *Response) fill(b []byte) {
 }
 
 func newResponse(b []byte) (resp *Response, err error) {
-	resp = &Response{ buf: smallBuf{b: b} }
+	resp = &Response{buf: smallBuf{b: b}}
 	err = resp.decodeHeader()
 	return
 }
@@ -58,11 +58,7 @@ func (resp *Response) decodeBody() (err error) {
 		}
 
 		if body[KeyData] != nil {
-			data := body[KeyData].([]interface{})
-			resp.Data = make([]interface{}, len(data))
-			for i, v := range data {
-				resp.Data[i] = v.([]interface{})
-			}
+			resp.Data = body[KeyData].([]interface{})
 		}
 		if body[KeyError] != nil {
 			resp.Error = body[KeyError].(string)

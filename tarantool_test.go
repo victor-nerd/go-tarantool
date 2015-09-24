@@ -342,4 +342,11 @@ func TestClient(t *testing.T) {
 	fmt.Println("Code", resp.Code)
 	fmt.Println("Data", resp.Data)
 	fmt.Println("----")
+
+	resp, err = client.Eval("return 5 + 6", []interface{}{})
+	fmt.Println("Eval")
+	fmt.Println("ERROR", err)
+	fmt.Println("Code", resp.Code)
+	fmt.Println("Data", resp.Data)
+	fmt.Println("----")
 }

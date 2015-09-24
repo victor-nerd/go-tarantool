@@ -106,6 +106,14 @@ func (conn *Connection) Call(functionName string, tuple []interface{}) (resp *Re
 	return
 }
 
+func (conn *Connection) Eval(expr string, tuple []interface{}) (resp *Response, err error) {
+	request := conn.NewRequest(EvalRequest)
+	request.body[KeyExpression] = expr
+	request.body[KeyTuple] = tuple
+	resp, err = request.perform()
+	return
+}
+
 func (conn *Connection) SelectAsync(spaceNo, indexNo, offset, limit, iterator uint32, key []interface{}) *Future {
 	request := conn.NewRequest(SelectRequest)
 	request.fillSearch(spaceNo, indexNo, key)
@@ -141,6 +149,13 @@ func (conn *Connection) UpdateAsync(spaceNo, indexNo uint32, key, tuple []interf
 func (conn *Connection) CallAsync(functionName string, tuple []interface{}) *Future {
 	request := conn.NewRequest(CallRequest)
 	request.body[KeyFunctionName] = functionName
+	request.body[KeyTuple] = tuple
+	return request.future()
+}
+
+func (conn *Connection) EvalAsync(expr string, tuple []interface{}) *Future {
+	request := conn.NewRequest(EvalRequest)
+	request.body[KeyExpression] = expr
 	request.body[KeyTuple] = tuple
 	return request.future()
 }

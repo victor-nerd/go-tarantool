@@ -8,6 +8,7 @@ const (
 	DeleteRequest    = 5
 	CallRequest      = 6
 	AuthRequest      = 7
+	EvalRequest      = 8
 	PingRequest      = 64
 	SubscribeRequest = 66
 
@@ -22,6 +23,7 @@ const (
 	KeyTuple        = 0x21
 	KeyFunctionName = 0x22
 	KeyUserName     = 0x23
+	KeyExpression   = 0x27
 	KeyData         = 0x30
 	KeyError        = 0x31
 
