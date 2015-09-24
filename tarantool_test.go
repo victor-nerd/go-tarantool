@@ -276,6 +276,7 @@ func TestClient(t *testing.T) {
 	fmt.Println("ERROR", err)
 	fmt.Println("Code", resp.Code)
 	fmt.Println("Data", resp.Data)
+	fmt.Println("Tuples", resp.Tuples())
 	fmt.Println("----")
 
 	var tpl []tuple
@@ -348,5 +349,6 @@ func TestClient(t *testing.T) {
 	fmt.Println("ERROR", err)
 	fmt.Println("Code", resp.Code)
 	fmt.Println("Data", resp.Data)
+	fmt.Println("Tuples", resp.Tuples())
 	fmt.Println("----")
 }
