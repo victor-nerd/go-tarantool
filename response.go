@@ -110,3 +110,16 @@ func (resp *Response) String() (str string) {
 		return fmt.Sprintf("<%d ERR 0x%x %s>", resp.RequestId, resp.Code, resp.Error)
 	}
 }
+
+func (resp *Response) Tuples() (res [][]interface{}) {
+	res = make([][]interface{}, len(resp.Data))
+	for i, t := range resp.Data {
+		switch t := t.(type) {
+		case []interface{}:
+			res[i] = t
+		default:
+			res[i] = []interface{}{t}
+		}
+	}
+	return res
+}
