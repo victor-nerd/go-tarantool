@@ -2,6 +2,7 @@ package tarantool
 
 import (
 	"errors"
+	"fmt"
 	"gopkg.in/vmihailenco/msgpack.v2"
 	"time"
 )
@@ -249,7 +250,7 @@ func (f *Future) wait() {
 				if _, ok := f.conn.requests[f.id]; ok {
 					delete(f.conn.requests, f.id)
 					close(f.c)
-					f.err = errors.New("client timeout")
+					f.err = fmt.Errorf("client timeout for request %d", f.id)
 				}
 				f.conn.mutex.Unlock()
 			}
