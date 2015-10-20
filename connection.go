@@ -53,15 +53,19 @@ func Connect(addr string, opts Opts) (conn *Connection, err error) {
 		opts:      opts,
 	}
 
+	var reconnect time.Duration
+	// disable reconnecting for first connect
+	reconnect, conn.opts.Reconnect = conn.opts.Reconnect, 0
 	_, _, err = conn.createConnection()
-	if err != nil {
+	conn.opts.Reconnect = reconnect
+	if err != nil && reconnect == 0 {
 		return nil, err
 	}
 
 	go conn.writer()
 	go conn.reader()
 
-	return
+	return conn, err
 }
 
 func (conn *Connection) Close() (err error) {
@@ -161,21 +165,25 @@ func (conn *Connection) createConnection() (r *bufio.Reader, w *bufio.Writer, er
 		err = errors.New("connection already closed")
 		return
 	}
-	var reconnects uint
-	for {
-		err = conn.dial()
-		if err == nil {
-			break
-		} else if conn.opts.Reconnect > 0 {
-			if conn.opts.MaxReconnects > 0 && reconnects > conn.opts.MaxReconnects {
-				return
+	if conn.c == nil {
+		var reconnects uint
+		for {
+			err = conn.dial()
+			if err == nil {
+				break
+			} else if conn.opts.Reconnect > 0 {
+				if conn.opts.MaxReconnects > 0 && reconnects > conn.opts.MaxReconnects {
+					log.Printf("tarantool: last reconnect to %s failed: %s, giving it up.\n", conn.addr, err.Error())
+					return
+				} else {
+					log.Printf("tarantool: reconnect (%d/%d) to %s failed: %s\n", reconnects, conn.opts.MaxReconnects, conn.addr, err.Error())
+					reconnects += 1
+					time.Sleep(conn.opts.Reconnect)
+					continue
+				}
 			} else {
-				reconnects += 1
-				time.Sleep(conn.opts.Reconnect)
-				continue
+				return
 			}
-		} else {
-			return
 		}
 	}
 	r = conn.r
