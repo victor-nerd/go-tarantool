@@ -99,6 +99,15 @@ func (conn *Connection) Update(spaceNo, indexNo uint32, key, tuple []interface{}
 	return
 }
 
+func (conn *Connection) Upsert(spaceNo, indexNo uint32, key, tuple, def_tuple []interface{}) (resp *Response, err error) {
+	request := conn.NewRequest(UpsertRequest)
+	request.fillSearch(spaceNo, indexNo, key)
+	request.body[KeyTuple] = tuple
+	request.body[KeyDefTuple] = def_tuple
+	resp, err = request.perform()
+	return
+}
+
 func (conn *Connection) Call(functionName string, tuple []interface{}) (resp *Response, err error) {
 	request := conn.NewRequest(CallRequest)
 	request.body[KeyFunctionName] = functionName
@@ -144,6 +153,14 @@ func (conn *Connection) UpdateAsync(spaceNo, indexNo uint32, key, tuple []interf
 	request := conn.NewRequest(UpdateRequest)
 	request.fillSearch(spaceNo, indexNo, key)
 	request.body[KeyTuple] = tuple
+	return request.future()
+}
+
+func (conn *Connection) UpsertAsync(spaceNo, indexNo uint32, key, tuple, def_tuple []interface{}) *Future {
+	request := conn.NewRequest(UpsertRequest)
+	request.fillSearch(spaceNo, indexNo, key)
+	request.body[KeyTuple] = tuple
+	request.body[KeyDefTuple] = def_tuple
 	return request.future()
 }
 
