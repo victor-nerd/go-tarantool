@@ -43,6 +43,10 @@ func (resp *Response) decodeHeader() (err error) {
 			if resp.Code, err = d.DecodeUint32(); err != nil {
 				return
 			}
+		default:
+			if _, err = d.DecodeInterface(); err != nil {
+				return
+			}
 		}
 	}
 	return nil
