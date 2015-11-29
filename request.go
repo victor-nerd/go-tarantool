@@ -91,19 +91,19 @@ func (conn *Connection) Delete(spaceNo, indexNo uint32, key []interface{}) (resp
 	return
 }
 
-func (conn *Connection) Update(spaceNo, indexNo uint32, key, tuple []interface{}) (resp *Response, err error) {
+func (conn *Connection) Update(spaceNo, indexNo uint32, key, ops []interface{}) (resp *Response, err error) {
 	request := conn.NewRequest(UpdateRequest)
 	request.fillSearch(spaceNo, indexNo, key)
-	request.body[KeyTuple] = tuple
+	request.body[KeyTuple] = ops
 	resp, err = request.perform()
 	return
 }
 
-func (conn *Connection) Upsert(spaceNo, indexNo uint32, key, tuple, def_tuple []interface{}) (resp *Response, err error) {
+func (conn *Connection) Upsert(spaceNo uint32, tuple, ops []interface{}) (resp *Response, err error) {
 	request := conn.NewRequest(UpsertRequest)
-	request.fillSearch(spaceNo, indexNo, key)
+	request.body[KeySpaceNo] = spaceNo
 	request.body[KeyTuple] = tuple
-	request.body[KeyDefTuple] = def_tuple
+	request.body[KeyDefTuple] = ops
 	resp, err = request.perform()
 	return
 }
@@ -149,18 +149,18 @@ func (conn *Connection) DeleteAsync(spaceNo, indexNo uint32, key []interface{}) 
 	return request.future()
 }
 
-func (conn *Connection) UpdateAsync(spaceNo, indexNo uint32, key, tuple []interface{}) *Future {
+func (conn *Connection) UpdateAsync(spaceNo, indexNo uint32, key, ops []interface{}) *Future {
 	request := conn.NewRequest(UpdateRequest)
 	request.fillSearch(spaceNo, indexNo, key)
-	request.body[KeyTuple] = tuple
+	request.body[KeyTuple] = ops
 	return request.future()
 }
 
-func (conn *Connection) UpsertAsync(spaceNo, indexNo uint32, key, tuple, def_tuple []interface{}) *Future {
+func (conn *Connection) UpsertAsync(spaceNo uint32, tuple, ops []interface{}) *Future {
 	request := conn.NewRequest(UpsertRequest)
-	request.fillSearch(spaceNo, indexNo, key)
+	request.body[KeySpaceNo] = spaceNo
 	request.body[KeyTuple] = tuple
-	request.body[KeyDefTuple] = def_tuple
+	request.body[KeyDefTuple] = ops
 	return request.future()
 }
 

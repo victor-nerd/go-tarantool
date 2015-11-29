@@ -151,11 +151,11 @@ const (
 	ErrRtreeRect                     = 0x8000 + iota // RTree: %s must be an array with %u (point) or %u (rectangle/box) numeric coordinates
 	ErrProcC                         = 0x8000 + iota // ???
 	ErrUnknownRtreeIndexDistanceType = 0x8000 + iota //Unknown RTREE index distance type %s
-	ErrProtocol						 = 0x8000 + iota // %s
-	ErrUpsertUniqueSecondaryKey		 = 0x8000 + iota // Space %s has a unique secondary index and does not support UPSERT
-	ErrWrongIndexRecord				 = 0x8000 + iota // Wrong record in _index space: got {%s}, expected {%s}
-	ErrWrongIndexParts				 = 0x8000 + iota // Wrong index parts (field %u): %s; expected field1 id (number), field1 type (string), ...
-	ErrWrongIndexOptions			 = 0x8000 + iota // Wrong index options (field %u): %s
-	ErrWrongSchemaVaersion			 = 0x8000 + iota // Wrong schema version, current: %d, in request: %u
-	ErrSlabAllocMax					 = 0x8000 + iota // Failed to allocate %u bytes for tuple in the slab allocator: tuple is too large. Check 'slab_alloc_maximal' configuration option.
+	ErrProtocol                      = 0x8000 + iota // %s
+	ErrUpsertUniqueSecondaryKey      = 0x8000 + iota // Space %s has a unique secondary index and does not support UPSERT
+	ErrWrongIndexRecord              = 0x8000 + iota // Wrong record in _index space: got {%s}, expected {%s}
+	ErrWrongIndexParts               = 0x8000 + iota // Wrong index parts (field %u): %s; expected field1 id (number), field1 type (string), ...
+	ErrWrongIndexOptions             = 0x8000 + iota // Wrong index options (field %u): %s
+	ErrWrongSchemaVaersion           = 0x8000 + iota // Wrong schema version, current: %d, in request: %u
+	ErrSlabAllocMax                  = 0x8000 + iota // Failed to allocate %u bytes for tuple in the slab allocator: tuple is too large. Check 'slab_alloc_maximal' configuration option.
 )
