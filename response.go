@@ -56,18 +56,15 @@ func (resp *Response) decodeBody() (err error) {
 	if resp.buf.Len() > 2 {
 		var body map[int]interface{}
 		d := msgpack.NewDecoder(&resp.buf)
-
 		if err = d.Decode(&body); err != nil {
 			return err
 		}
-
 		if body[KeyData] != nil {
 			resp.Data = body[KeyData].([]interface{})
 		}
 		if body[KeyError] != nil {
 			resp.Error = body[KeyError].(string)
 		}
-
 		if resp.Code != OkCode {
 			err = Error{resp.Code, resp.Error}
 		}
@@ -82,7 +79,6 @@ func (resp *Response) decodeBodyTyped(res interface{}) (err error) {
 		if l, err = d.DecodeMapLen(); err != nil {
 			return err
 		}
-
 		for ; l > 0; l-- {
 			var cd int
 			if cd, err = d.DecodeInt(); err != nil {
@@ -97,9 +93,12 @@ func (resp *Response) decodeBodyTyped(res interface{}) (err error) {
 				if resp.Error, err = d.DecodeString(); err != nil {
 					return err
 				}
+			default:
+				if _, err = d.DecodeInterface(); err != nil {
+					return err
+				}
 			}
 		}
-
 		if resp.Code != OkCode {
 			err = Error{resp.Code, resp.Error}
 		}
