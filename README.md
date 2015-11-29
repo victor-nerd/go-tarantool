@@ -16,8 +16,6 @@ import (
 func main() {
 	spaceNo := uint32(512)
 	indexNo := uint32(0)
-	tuple1 := []interface{}{12, "Hello World", "Olga"}
-	tuple2 := []interface{}{13, "99 bugs in code", "Anna"}
 
 	server := "127.0.0.1:3013"
 	opts := tarantool.Opts{
@@ -37,35 +35,68 @@ func main() {
 	log.Println(resp.Data)
 	log.Println(err)
 
-	resp, err = client.Insert(spaceNo, tuple1)
+	// insert new tuple { 10, 1 }
+	resp, err = client.Insert(spaceNo, []interface{}{10, 1})
 	log.Println("Insert")
 	log.Println("Error", err)
 	log.Println("Code", resp.Code)
 	log.Println("Data", resp.Data)
 
-	resp, err = client.Replace(spaceNo, tuple2)
-	log.Println("Replace")
-	log.Println("Error", err)
-	log.Println("Code", resp.Code)
-	log.Println("Data", resp.Data)
-
-	resp, err = client.Delete(spaceNo, indexNo, tuple1[0:1])
+	// delete tuple with primary key { 10 }
+	resp, err = client.Delete(spaceNo, indexNo, []interface{}{10})
 	log.Println("Delete")
 	log.Println("Error", err)
 	log.Println("Code", resp.Code)
 	log.Println("Data", resp.Data)
 
-	resp, err = client.Select(spaceNo, indexNo, 0, 1, tarantool.IterEq, tuple2[0:1])
+	// replace tuple with { 13, 1 }
+	resp, err = client.Replace(spaceNo, []interface{}{13, 1})
+	log.Println("Replace")
+	log.Println("Error", err)
+	log.Println("Code", resp.Code)
+	log.Println("Data", resp.Data)
+
+	// update tuple with primary key { 13 }, incrementing second field by 3
+	resp, err = client.Update(spaceNo, indexNo, []interface{}{13}, []interface{}{[]interface{}{"+", 1, 3}})
+	log.Println("Update")
+	log.Println("Error", err)
+	log.Println("Code", resp.Code)
+	log.Println("Data", resp.Data)
+
+	// insert tuple {15, 1} or increment second field by 1
+	resp, err = client.Upsert(spaceNo, []interface{}{15, 1}, []interface{}{[]interface{}{"+", 1, 1}})
+	log.Println("Upsert")
+	log.Println("Error", err)
+	log.Println("Code", resp.Code)
+	log.Println("Data", resp.Data)
+
+	// select just one tuple with primay key { 15 }
+	resp, err = client.Select(spaceNo, indexNo, 0, 1, tarantool.IterEq, []interface{}{15})
 	log.Println("Select")
 	log.Println("Error", err)
 	log.Println("Code", resp.Code)
 	log.Println("Data", resp.Data)
 
+	// select tuples by condition ( primay key > 15 ) with offset 7 limit 5
+	// BTREE index supposed
+	resp, err = client.Select(spaceNo, indexNo, 7, 5, tarantool.IterGt, []interface{}{15})
+	log.Println("Select")
+	log.Println("Error", err)
+	log.Println("Code", resp.Code)
+	log.Println("Data", resp.Data)
+
+	// call function 'func_name' with arguments
 	resp, err = client.Call("func_name", []interface{}{1, 2, 3})
 	log.Println("Call")
 	log.Println("Error", err)
 	log.Println("Code", resp.Code)
 	log.Println("Data", resp.Data)
-}
 
+	// run raw lua code
+	resp, err = client.Eval("return 1 + 2", []interface{}{})
+	log.Println("Eval")
+	log.Println("Error", err)
+	log.Println("Code", resp.Code)
+	log.Println("Data", resp.Data)
+}
 ```
