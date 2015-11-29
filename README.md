@@ -1,6 +1,6 @@
 # Tarantool
 
-[Tarantool 1.6+](http://tarantool.org/) client on Go.
+[Tarantool 1.6+](http://tarantool.org/) client in Go.
 
 ## Usage
 
@@ -100,3 +100,10 @@ func main() {
 	log.Println("Data", resp.Data)
 }
 ```
+
+## Options
+* Timeout - timeout for any particular request. If Timeout is zero request any request may block infinitely
+* Reconnect - timeout for between reconnect attempts. If Reconnect is zero, no reconnects will be performed
+* MaxReconnects - maximal number of reconnect failures after that we give it up
+* User - user name to login tarantool
+* Pass - user password to login tarantool
