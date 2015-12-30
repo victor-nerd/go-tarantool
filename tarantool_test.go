@@ -9,7 +9,7 @@ import (
 )
 
 type tuple struct {
-	Id   int
+	Id   uint
 	Msg  string
 	Name string
 }
@@ -33,13 +33,13 @@ func BenchmarkClientSerial(b *testing.B) {
 		b.Errorf("No connection available")
 	}
 
-	_, err = conn.Replace(spaceNo, []interface{}{1, "hello", "world"})
+	_, err = conn.Replace(spaceNo, []interface{}{uint(1), "hello", "world"})
 	if err != nil {
 		b.Errorf("No connection available")
 	}
 
 	for i := 0; i < b.N; i++ {
-		_, err = conn.Select(spaceNo, indexNo, 0, 1, IterAll, []interface{}{1})
+		_, err = conn.Select(spaceNo, indexNo, 0, 1, IterAll, []interface{}{uint(1)})
 		if err != nil {
 			b.Errorf("No connection available")
 		}
@@ -55,7 +55,7 @@ func BenchmarkClientFuture(b *testing.B) {
 		b.Error(err)
 	}
 
-	_, err = conn.Replace(spaceNo, []interface{}{1, "hello", "world"})
+	_, err = conn.Replace(spaceNo, []interface{}{uint(1), "hello", "world"})
 	if err != nil {
 		b.Error(err)
 	}
@@ -63,7 +63,7 @@ func BenchmarkClientFuture(b *testing.B) {
 	for i := 0; i < b.N; i += N {
 		var fs [N]*Future
 		for j := 0; j < N; j++ {
-			fs[j] = conn.SelectAsync(spaceNo, indexNo, 0, 1, IterAll, []interface{}{1})
+			fs[j] = conn.SelectAsync(spaceNo, indexNo, 0, 1, IterAll, []interface{}{uint(1)})
 		}
 		for j := 0; j < N; j++ {
 			_, err = fs[j].Get()
@@ -80,7 +80,7 @@ func encodeTuple(e *msgpack.Encoder, v reflect.Value) error {
 	if err := e.EncodeSliceLen(3); err != nil {
 		return err
 	}
-	if err := e.EncodeInt(t.Id); err != nil {
+	if err := e.EncodeUint(t.Id); err != nil {
 		return err
 	}
 	if err := e.EncodeString(t.Msg); err != nil {
@@ -102,7 +102,7 @@ func decodeTuple(d *msgpack.Decoder, v reflect.Value) error {
 	if l != 3 {
 		return fmt.Errorf("array len doesn't match: %d", l)
 	}
-	if t.Id, err = d.DecodeInt(); err != nil {
+	if t.Id, err = d.DecodeUint(); err != nil {
 		return err
 	}
 	if t.Msg, err = d.DecodeString(); err != nil {
@@ -122,7 +122,7 @@ func BenchmarkClientFutureTyped(b *testing.B) {
 		b.Errorf("No connection available")
 	}
 
-	_, err = conn.Replace(spaceNo, []interface{}{1, "hello", "world"})
+	_, err = conn.Replace(spaceNo, []interface{}{uint(1), "hello", "world"})
 	if err != nil {
 		b.Errorf("No connection available")
 	}
@@ -130,7 +130,7 @@ func BenchmarkClientFutureTyped(b *testing.B) {
 	for i := 0; i < b.N; i += N {
 		var fs [N]*Future
 		for j := 0; j < N; j++ {
-			fs[j] = conn.SelectAsync(spaceNo, indexNo, 0, 1, IterAll, []interface{}{1})
+			fs[j] = conn.SelectAsync(spaceNo, indexNo, 0, 1, IterAll, []interface{}{uint(1)})
 		}
 		for j := 0; j < N; j++ {
 			var r []tuple
@@ -154,7 +154,7 @@ func BenchmarkClientFutureParallel(b *testing.B) {
 		b.Errorf("No connection available")
 	}
 
-	_, err = conn.Replace(spaceNo, []interface{}{1, "hello", "world"})
+	_, err = conn.Replace(spaceNo, []interface{}{uint(1), "hello", "world"})
 	if err != nil {
 		b.Errorf("No connection available")
 	}
@@ -165,7 +165,7 @@ func BenchmarkClientFutureParallel(b *testing.B) {
 			var fs [N]*Future
 			var j int
 			for j = 0; j < N && pb.Next(); j++ {
-				fs[j] = conn.SelectAsync(spaceNo, indexNo, 0, 1, IterAll, []interface{}{1})
+				fs[j] = conn.SelectAsync(spaceNo, indexNo, 0, 1, IterAll, []interface{}{uint(1)})
 			}
 			exit = j < N
 			for j > 0 {
@@ -187,7 +187,7 @@ func BenchmarkClientFutureParallelTyped(b *testing.B) {
 		b.Errorf("No connection available")
 	}
 
-	_, err = conn.Replace(spaceNo, []interface{}{1, "hello", "world"})
+	_, err = conn.Replace(spaceNo, []interface{}{uint(1), "hello", "world"})
 	if err != nil {
 		b.Errorf("No connection available")
 	}
@@ -198,7 +198,7 @@ func BenchmarkClientFutureParallelTyped(b *testing.B) {
 			var fs [N]*Future
 			var j int
 			for j = 0; j < N && pb.Next(); j++ {
-				fs[j] = conn.SelectAsync(spaceNo, indexNo, 0, 1, IterAll, []interface{}{1})
+				fs[j] = conn.SelectAsync(spaceNo, indexNo, 0, 1, IterAll, []interface{}{uint(1)})
 			}
 			exit = j < N
 			for j > 0 {
@@ -222,14 +222,14 @@ func BenchmarkClientParrallel(b *testing.B) {
 		b.Errorf("No connection available")
 	}
 
-	_, err = conn.Replace(spaceNo, []interface{}{1, "hello", "world"})
+	_, err = conn.Replace(spaceNo, []interface{}{uint(1), "hello", "world"})
 	if err != nil {
 		b.Errorf("No connection available")
 	}
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			_, err = conn.Select(spaceNo, indexNo, 0, 1, IterAll, []interface{}{1})
+			_, err = conn.Select(spaceNo, indexNo, 0, 1, IterAll, []interface{}{uint(1)})
 			if err != nil {
 				b.Errorf("No connection available")
 			}
@@ -262,7 +262,7 @@ func TestClient(t *testing.T) {
 	}
 
 	// Insert
-	resp, err = conn.Insert(spaceNo, []interface{}{1, "hello", "world"})
+	resp, err = conn.Insert(spaceNo, []interface{}{uint(1), "hello", "world"})
 	if err != nil {
 		t.Errorf("Failed to Insert: %s", err.Error())
 	}
@@ -285,7 +285,7 @@ func TestClient(t *testing.T) {
 			t.Errorf("Unexpected body of Insert (1)")
 		}
 	}
-	resp, err = conn.Insert(spaceNo, []interface{}{1, "hello", "world"})
+	resp, err = conn.Insert(spaceNo, []interface{}{uint(1), "hello", "world"})
 	if tntErr, ok := err.(Error); !ok || tntErr.Code != ErrTupleFound {
 		t.Errorf("Expected ErrTupleFound but got: %v", err)
 	}
@@ -294,7 +294,7 @@ func TestClient(t *testing.T) {
 	}
 
 	// Delete
-	resp, err = conn.Delete(spaceNo, indexNo, []interface{}{1})
+	resp, err = conn.Delete(spaceNo, indexNo, []interface{}{uint(1)})
 	if err != nil {
 		t.Errorf("Failed to Delete: %s", err.Error())
 	}
@@ -317,7 +317,7 @@ func TestClient(t *testing.T) {
 			t.Errorf("Unexpected body of Delete (1)")
 		}
 	}
-	resp, err = conn.Delete(spaceNo, indexNo, []interface{}{101})
+	resp, err = conn.Delete(spaceNo, indexNo, []interface{}{uint(101)})
 	if err != nil {
 		t.Errorf("Failed to Replace: %s", err.Error())
 	}
@@ -329,14 +329,14 @@ func TestClient(t *testing.T) {
 	}
 
 	// Replace
-	resp, err = conn.Replace(spaceNo, []interface{}{2, "hello", "world"})
+	resp, err = conn.Replace(spaceNo, []interface{}{uint(2), "hello", "world"})
 	if err != nil {
 		t.Errorf("Failed to Replace: %s", err.Error())
 	}
 	if resp == nil {
 		t.Errorf("Response is nil after Replace")
 	}
-	resp, err = conn.Replace(spaceNo, []interface{}{2, "hi", "planet"})
+	resp, err = conn.Replace(spaceNo, []interface{}{uint(2), "hi", "planet"})
 	if err != nil {
 		t.Errorf("Failed to Replace (duplicate): %s", err.Error())
 	}
@@ -361,7 +361,7 @@ func TestClient(t *testing.T) {
 	}
 
 	// Update
-	resp, err = conn.Update(spaceNo, indexNo, []interface{}{2}, []interface{}{[]interface{}{"=", 1, "bye"}, []interface{}{"#", 2, 1}})
+	resp, err = conn.Update(spaceNo, indexNo, []interface{}{uint(2)}, []interface{}{[]interface{}{"=", 1, "bye"}, []interface{}{"#", 2, 1}})
 	if err != nil {
 		t.Errorf("Failed to Update: %s", err.Error())
 	}
@@ -386,14 +386,14 @@ func TestClient(t *testing.T) {
 	}
 
 	// Upsert
-	resp, err = conn.Upsert(spaceNo, []interface{}{3, 1}, []interface{}{[]interface{}{"+", 1, 1}})
+	resp, err = conn.Upsert(spaceNo, []interface{}{uint(3), 1}, []interface{}{[]interface{}{"+", 1, 1}})
 	if err != nil {
 		t.Errorf("Failed to Upsert (insert): %s", err.Error())
 	}
 	if resp == nil {
 		t.Errorf("Response is nil after Upsert (insert)")
 	}
-	resp, err = conn.Upsert(spaceNo, []interface{}{3, 1}, []interface{}{[]interface{}{"+", 1, 1}})
+	resp, err = conn.Upsert(spaceNo, []interface{}{uint(3), 1}, []interface{}{[]interface{}{"+", 1, 1}})
 	if err != nil {
 		t.Errorf("Failed to Upsert (update): %s", err.Error())
 	}
@@ -403,12 +403,12 @@ func TestClient(t *testing.T) {
 
 	// Select
 	for i := 10; i < 20; i++ {
-		resp, err = conn.Replace(spaceNo, []interface{}{i, fmt.Sprintf("val %d", i), "bla"})
+		resp, err = conn.Replace(spaceNo, []interface{}{uint(i), fmt.Sprintf("val %d", i), "bla"})
 		if err != nil {
 			t.Errorf("Failed to Replace: %s", err.Error())
 		}
 	}
-	resp, err = conn.Select(spaceNo, indexNo, 0, 1, IterEq, []interface{}{10})
+	resp, err = conn.Select(spaceNo, indexNo, 0, 1, IterEq, []interface{}{uint(10)})
 	if err != nil {
 		t.Errorf("Failed to Select: %s", err.Error())
 	}
@@ -430,7 +430,7 @@ func TestClient(t *testing.T) {
 	}
 
 	// Select empty
-	resp, err = conn.Select(spaceNo, indexNo, 0, 1, IterEq, []interface{}{30})
+	resp, err = conn.Select(spaceNo, indexNo, 0, 1, IterEq, []interface{}{uint(30)})
 	if err != nil {
 		t.Errorf("Failed to Select: %s", err.Error())
 	}
@@ -443,7 +443,7 @@ func TestClient(t *testing.T) {
 
 	// Select Typed
 	var tpl []tuple
-	err = conn.SelectTyped(spaceNo, indexNo, 0, 1, IterEq, []interface{}{10}, &tpl)
+	err = conn.SelectTyped(spaceNo, indexNo, 0, 1, IterEq, []interface{}{uint(10)}, &tpl)
 	if err != nil {
 		t.Errorf("Failed to SelectTyped: %s", err.Error())
 	}
@@ -457,7 +457,7 @@ func TestClient(t *testing.T) {
 
 	// Select Typed Empty
 	var tpl2 []tuple
-	err = conn.SelectTyped(spaceNo, indexNo, 0, 1, IterEq, []interface{}{30}, &tpl2)
+	err = conn.SelectTyped(spaceNo, indexNo, 0, 1, IterEq, []interface{}{uint(30)}, &tpl2)
 	if err != nil {
 		t.Errorf("Failed to SelectTyped: %s", err.Error())
 	}
