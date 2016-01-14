@@ -76,6 +76,8 @@ func (conn *Connection) Close() (err error) {
 }
 
 func (conn *Connection) RemoteAddr() string {
+	conn.mutex.Lock()
+	defer conn.mutex.Unlock()
 	if conn.c == nil {
 		return ""
 	}
@@ -83,6 +85,8 @@ func (conn *Connection) RemoteAddr() string {
 }
 
 func (conn *Connection) LocalAddr() string {
+	conn.mutex.Lock()
+	defer conn.mutex.Unlock()
 	if conn.c == nil {
 		return ""
 	}
