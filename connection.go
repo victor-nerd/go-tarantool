@@ -75,6 +75,24 @@ func (conn *Connection) Close() (err error) {
 	return
 }
 
+func (conn *Connection) RemoteAddr() string {
+	conn.mutex.Lock()
+	defer conn.mutex.Unlock()
+	if conn.c == nil {
+		return ""
+	}
+	return conn.c.RemoteAddr().String()
+}
+
+func (conn *Connection) LocalAddr() string {
+	conn.mutex.Lock()
+	defer conn.mutex.Unlock()
+	if conn.c == nil {
+		return ""
+	}
+	return conn.c.LocalAddr().String()
+}
+
 func (conn *Connection) dial() (err error) {
 	connection, err := net.Dial("tcp", conn.addr)
 	if err != nil {
