@@ -191,9 +191,8 @@ func (req *Request) performTyped(res interface{}) (err error) {
 }
 
 func (req *Request) pack() (packet []byte, err error) {
-	var body []byte
 	rid := req.requestId
-	h := [...]byte{
+	h := smallWBuf{
 		0xce, 0, 0, 0, 0, // length
 		0x82,                           // 2 element map
 		KeyCode, byte(req.requestCode), // request code
@@ -202,18 +201,34 @@ func (req *Request) pack() (packet []byte, err error) {
 		byte(rid >> 8), byte(rid),
 	}
 
-	body, err = msgpack.Marshal(req.body)
+	enc := msgpack.NewEncoder(&h)
+	err = enc.EncodeMapLen(len(req.body))
 	if err != nil {
 		return
 	}
+	for k,v := range(req.body) {
+		err = enc.EncodeInt64(int64(k))
+		if err != nil {
+			return
+		}
+		switch vv:=v.(type) {
+		case uint32:
+			err = enc.EncodeUint64(uint64(vv))
+		default:
+			err = enc.Encode(vv)
+		}
+		if err != nil {
+			return
+		}
+	}
 
-	l := uint32(len(h) - 5 + len(body))
+	l := uint32(len(h) - 5)
 	h[1] = byte(l >> 24)
 	h[2] = byte(l >> 16)
 	h[3] = byte(l >> 8)
 	h[4] = byte(l)
 
-	packet = append(h[:], body...)
+	packet = h
 	return
 }
 
