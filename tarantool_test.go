@@ -492,4 +492,145 @@ func TestClient(t *testing.T) {
 	if val != 11 {
 		t.Errorf("5 + 6 == 11, but got %v", val)
 	}
+
+	// Schema
+	schema := conn.Schema
+	if schema.Spaces == nil {
+		t.Errorf("schema.Spaces is nil")
+	}
+	if schema.SpacesN == nil {
+		t.Errorf("schema.SpacesN is nil")
+	}
+	var space, space2 *Space
+	var ok bool
+	if space, ok = schema.Spaces[9991]; !ok {
+		t.Errorf("space with id = 9991 was not found in schema.Spaces")
+	}
+	if space2, ok = schema.SpacesN["schematest"]; !ok {
+		t.Errorf("space with name 'schematest' was not found in schema.Spaces")
+	}
+	if space != space2 {
+		t.Errorf("space with id = 9991 and space with name schematest are different")
+	}
+	if space.Id != 9991 {
+		t.Errorf("space 9991 has incorrect Id")
+	}
+	if space.Name != "schematest" {
+		t.Errorf("space 9991 has incorrect Name")
+	}
+	if !space.Temporary {
+		t.Errorf("space 9991 should be temporary")
+	}
+	if space.Engine != "memtx" {
+		t.Errorf("space 9991 engine should be memtx")
+	}
+	if space.FieldsCount != 7 {
+		t.Errorf("space 9991 has incorrect fields count")
+	}
+
+	if space.Fields == nil {
+		t.Errorf("space.Fields is nill")
+	}
+	if space.FieldsN == nil {
+		t.Errorf("space.FieldsN is nill")
+	}
+	if len(space.Fields) != 3 {
+		t.Errorf("space.Fields len is incorrect")
+	}
+	if len(space.FieldsN) != 2 {
+		t.Errorf("space.FieldsN len is incorrect")
+	}
+
+	var field1, field2, field5, field1_, field5_ *Field
+	if field1, ok = space.Fields[1]; !ok {
+		t.Errorf("field id = 1 was not found")
+	}
+	if field2, ok = space.Fields[2]; !ok {
+		t.Errorf("field id = 2 was not found")
+	}
+	if field5, ok = space.Fields[5]; !ok {
+		t.Errorf("field id = 5 was not found")
+	}
+
+	if field1_, ok = space.FieldsN["name1"]; !ok {
+		t.Errorf("field name = name1 was not found")
+	}
+	if field5_, ok = space.FieldsN["name5"]; !ok {
+		t.Errorf("field name = name5 was not found")
+	}
+	if field1 != field1_ || field5 != field5_ {
+		t.Errorf("field with id = 1 and field with name 'name1' are different")
+	}
+	if field1.Name != "name1" {
+		t.Errorf("field 1 has incorrect Name")
+	}
+	if field1.Type != "" {
+		t.Errorf("field 1 has incorrect Type")
+	}
+	if field2.Name != "" {
+		t.Errorf("field 2 has incorrect Name")
+	}
+	if field2.Type != "type2" {
+		t.Errorf("field 2 has incorrect Type")
+	}
+
+	if space.Indexes == nil {
+		t.Errorf("space.Indexes is nill")
+	}
+	if space.IndexesN == nil {
+		t.Errorf("space.IndexesN is nill")
+	}
+	if len(space.Indexes) != 2 {
+		t.Errorf("space.Indexes len is incorrect")
+	}
+	if len(space.IndexesN) != 2 {
+		t.Errorf("space.IndexesN len is incorrect")
+	}
+
+	var index0, index3, index0_, index3_ *Index
+	if index0, ok = space.Indexes[0]; !ok {
+		t.Errorf("index id = 0 was not found")
+	}
+	if index3, ok = space.Indexes[3]; !ok {
+		t.Errorf("index id = 3 was not found")
+	}
+	if index0_, ok = space.IndexesN["primary"]; !ok {
+		t.Errorf("index name = primary was not found")
+	}
+	if index3_, ok = space.IndexesN["secondary"]; !ok {
+		t.Errorf("index name = secondary was not found")
+	}
+	if index0 != index0_ || index3 != index3_ {
+		t.Errorf("index with id = 3 and index with name 'secondary' are different")
+	}
+	if index3.Id != 3 {
+		t.Errorf("index has incorrect Id")
+	}
+	if index0.Name != "primary" {
+		t.Errorf("index has incorrect Name")
+	}
+	if index0.Type != "hash" || index3.Type != "tree" {
+		t.Errorf("index has incorrect Type")
+	}
+	if !index0.Unique || index3.Unique {
+		t.Errorf("index has incorrect Unique")
+	}
+	if index3.Fields == nil {
+		t.Errorf("index.Fields is nil")
+	}
+	if len(index3.Fields) != 2 {
+		t.Errorf("index.Fields len is incorrect")
+	}
+
+	ifield1 := index3.Fields[0]
+	ifield2 := index3.Fields[1]
+	if ifield1 == nil || ifield2 == nil {
+		t.Errorf("index field is nil")
+	}
+	if ifield1.Id != 1 || ifield2.Id != 2 {
+		t.Errorf("index field has incorrect Id")
+	}
+	if ifield1.Type != "num" || ifield2.Type != "STR" {
+		t.Errorf("index field has incorrect Type[")
+	}
 }
