@@ -4,12 +4,15 @@ box.cfg{
     snap_dir='snap',
 }
 
-local s = box.schema.space.create('test', {if_not_exists = true})
+local s = box.schema.space.create('test', {
+    id = 512,
+    if_not_exists = true,
+})
 s:create_index('primary', {type = 'hash', parts = {1, 'NUM'}, if_not_exists = true})
 s:truncate()
 
 local st = box.schema.space.create('schematest', {
-    id = 9991,
+    id = 514,
     temporary = true,
     if_not_exists = true,
     field_count = 7,
@@ -32,8 +35,8 @@ st:create_index('secondary', {
     parts = { 2, 'num', 3, 'STR' },
     if_not_exists = true,
 })
+st:truncate()
 
-s:truncate()
 --box.schema.user.grant('guest', 'read,write,execute', 'universe')
 
 -- auth testing: access control

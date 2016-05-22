@@ -20,8 +20,10 @@ func init() {
 
 var server = "127.0.0.1:3013"
 var spaceNo = uint32(512)
+var spaceName = "test"
 var indexNo = uint32(0)
-var opts = Opts{Timeout: 500 * time.Millisecond}
+var indexName = "primary"
+var opts = Opts{Timeout: 500 * time.Millisecond, User: "test", Pass: "test"}
 
 const N = 500
 
@@ -31,15 +33,16 @@ func BenchmarkClientSerial(b *testing.B) {
 	conn, err := Connect(server, opts)
 	if err != nil {
 		b.Errorf("No connection available")
+		return
 	}
 
-	_, err = conn.Replace(spaceNo, []interface{}{uint(1), "hello", "world"})
+	_, err = conn.Replace(spaceNo, []interface{}{uint(1111), "hello", "world"})
 	if err != nil {
 		b.Errorf("No connection available")
 	}
 
 	for i := 0; i < b.N; i++ {
-		_, err = conn.Select(spaceNo, indexNo, 0, 1, IterAll, []interface{}{uint(1)})
+		_, err = conn.Select(spaceNo, indexNo, 0, 1, IterEq, []interface{}{uint(1111)})
 		if err != nil {
 			b.Errorf("No connection available")
 		}
@@ -53,9 +56,10 @@ func BenchmarkClientFuture(b *testing.B) {
 	conn, err := Connect(server, opts)
 	if err != nil {
 		b.Error(err)
+		return
 	}
 
-	_, err = conn.Replace(spaceNo, []interface{}{uint(1), "hello", "world"})
+	_, err = conn.Replace(spaceNo, []interface{}{uint(1111), "hello", "world"})
 	if err != nil {
 		b.Error(err)
 	}
@@ -63,7 +67,7 @@ func BenchmarkClientFuture(b *testing.B) {
 	for i := 0; i < b.N; i += N {
 		var fs [N]*Future
 		for j := 0; j < N; j++ {
-			fs[j] = conn.SelectAsync(spaceNo, indexNo, 0, 1, IterAll, []interface{}{uint(1)})
+			fs[j] = conn.SelectAsync(spaceNo, indexNo, 0, 1, IterEq, []interface{}{uint(1111)})
 		}
 		for j := 0; j < N; j++ {
 			_, err = fs[j].Get()
@@ -120,9 +124,10 @@ func BenchmarkClientFutureTyped(b *testing.B) {
 	conn, err := Connect(server, opts)
 	if err != nil {
 		b.Errorf("No connection available")
+		return
 	}
 
-	_, err = conn.Replace(spaceNo, []interface{}{uint(1), "hello", "world"})
+	_, err = conn.Replace(spaceNo, []interface{}{uint(1111), "hello", "world"})
 	if err != nil {
 		b.Errorf("No connection available")
 	}
@@ -130,7 +135,7 @@ func BenchmarkClientFutureTyped(b *testing.B) {
 	for i := 0; i < b.N; i += N {
 		var fs [N]*Future
 		for j := 0; j < N; j++ {
-			fs[j] = conn.SelectAsync(spaceNo, indexNo, 0, 1, IterAll, []interface{}{uint(1)})
+			fs[j] = conn.SelectAsync(spaceNo, indexNo, 0, 1, IterEq, []interface{}{uint(1111)})
 		}
 		for j := 0; j < N; j++ {
 			var r []tuple
@@ -138,11 +143,10 @@ func BenchmarkClientFutureTyped(b *testing.B) {
 			if err != nil {
 				b.Error(err)
 			}
-			if len(r) != 1 || r[0].Id != 12 {
+			if len(r) != 1 || r[0].Id != 1111 {
 				b.Errorf("Doesn't match %v", r)
 			}
 		}
-
 	}
 }
 
@@ -152,9 +156,10 @@ func BenchmarkClientFutureParallel(b *testing.B) {
 	conn, err := Connect(server, opts)
 	if err != nil {
 		b.Errorf("No connection available")
+		return
 	}
 
-	_, err = conn.Replace(spaceNo, []interface{}{uint(1), "hello", "world"})
+	_, err = conn.Replace(spaceNo, []interface{}{uint(1111), "hello", "world"})
 	if err != nil {
 		b.Errorf("No connection available")
 	}
@@ -165,7 +170,7 @@ func BenchmarkClientFutureParallel(b *testing.B) {
 			var fs [N]*Future
 			var j int
 			for j = 0; j < N && pb.Next(); j++ {
-				fs[j] = conn.SelectAsync(spaceNo, indexNo, 0, 1, IterAll, []interface{}{uint(1)})
+				fs[j] = conn.SelectAsync(spaceNo, indexNo, 0, 1, IterEq, []interface{}{uint(1111)})
 			}
 			exit = j < N
 			for j > 0 {
@@ -173,6 +178,7 @@ func BenchmarkClientFutureParallel(b *testing.B) {
 				_, err = fs[j].Get()
 				if err != nil {
 					b.Error(err)
+					break
 				}
 			}
 		}
@@ -185,9 +191,10 @@ func BenchmarkClientFutureParallelTyped(b *testing.B) {
 	conn, err := Connect(server, opts)
 	if err != nil {
 		b.Errorf("No connection available")
+		return
 	}
 
-	_, err = conn.Replace(spaceNo, []interface{}{uint(1), "hello", "world"})
+	_, err = conn.Replace(spaceNo, []interface{}{uint(1111), "hello", "world"})
 	if err != nil {
 		b.Errorf("No connection available")
 	}
@@ -198,7 +205,7 @@ func BenchmarkClientFutureParallelTyped(b *testing.B) {
 			var fs [N]*Future
 			var j int
 			for j = 0; j < N && pb.Next(); j++ {
-				fs[j] = conn.SelectAsync(spaceNo, indexNo, 0, 1, IterAll, []interface{}{uint(1)})
+				fs[j] = conn.SelectAsync(spaceNo, indexNo, 0, 1, IterEq, []interface{}{uint(1111)})
 			}
 			exit = j < N
 			for j > 0 {
@@ -207,9 +214,11 @@ func BenchmarkClientFutureParallelTyped(b *testing.B) {
 				err = fs[j].GetTyped(&r)
 				if err != nil {
 					b.Error(err)
+					break
 				}
-				if len(r) != 1 || r[0].Id != 12 {
+				if len(r) != 1 || r[0].Id != 1111 {
 					b.Errorf("Doesn't match %v", r)
+					break
 				}
 			}
 		}
@@ -220,18 +229,20 @@ func BenchmarkClientParrallel(b *testing.B) {
 	conn, err := Connect(server, opts)
 	if err != nil {
 		b.Errorf("No connection available")
+		return
 	}
 
-	_, err = conn.Replace(spaceNo, []interface{}{uint(1), "hello", "world"})
+	_, err = conn.Replace(spaceNo, []interface{}{uint(1111), "hello", "world"})
 	if err != nil {
 		b.Errorf("No connection available")
 	}
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			_, err = conn.Select(spaceNo, indexNo, 0, 1, IterAll, []interface{}{uint(1)})
+			_, err = conn.Select(spaceNo, indexNo, 0, 1, IterEq, []interface{}{uint(1111)})
 			if err != nil {
 				b.Errorf("No connection available")
+				break
 			}
 		}
 	})
@@ -244,12 +255,14 @@ func TestClient(t *testing.T) {
 	var err error
 	var conn *Connection
 
-	conn, err = Connect(server, Opts{User: "test", Pass: "test"})
+	conn, err = Connect(server, opts)
 	if err != nil {
 		t.Errorf("Failed to connect: %s", err.Error())
+		return
 	}
 	if conn == nil {
 		t.Errorf("conn is nil after Connect")
+		return
 	}
 
 	// Ping
@@ -319,7 +332,7 @@ func TestClient(t *testing.T) {
 	}
 	resp, err = conn.Delete(spaceNo, indexNo, []interface{}{uint(101)})
 	if err != nil {
-		t.Errorf("Failed to Replace: %s", err.Error())
+		t.Errorf("Failed to Delete: %s", err.Error())
 	}
 	if resp == nil {
 		t.Errorf("Response is nil after Delete")
@@ -492,70 +505,85 @@ func TestClient(t *testing.T) {
 	if val != 11 {
 		t.Errorf("5 + 6 == 11, but got %v", val)
 	}
+}
+
+func TestSchema(t *testing.T) {
+	var err error
+	var conn *Connection
+
+	conn, err = Connect(server, opts)
+	if err != nil {
+		t.Errorf("Failed to connect: %s", err.Error())
+		return
+	}
+	if conn == nil {
+		t.Errorf("conn is nil after Connect")
+		return
+	}
 
 	// Schema
 	schema := conn.Schema
+	if schema.SpacesById == nil {
+		t.Errorf("schema.SpacesById is nil")
+	}
 	if schema.Spaces == nil {
 		t.Errorf("schema.Spaces is nil")
 	}
-	if schema.SpacesN == nil {
-		t.Errorf("schema.SpacesN is nil")
-	}
 	var space, space2 *Space
 	var ok bool
-	if space, ok = schema.Spaces[9991]; !ok {
-		t.Errorf("space with id = 9991 was not found in schema.Spaces")
+	if space, ok = schema.SpacesById[514]; !ok {
+		t.Errorf("space with id = 514 was not found in schema.SpacesById")
 	}
-	if space2, ok = schema.SpacesN["schematest"]; !ok {
-		t.Errorf("space with name 'schematest' was not found in schema.Spaces")
+	if space2, ok = schema.Spaces["schematest"]; !ok {
+		t.Errorf("space with name 'schematest' was not found in schema.SpacesById")
 	}
 	if space != space2 {
-		t.Errorf("space with id = 9991 and space with name schematest are different")
+		t.Errorf("space with id = 514 and space with name schematest are different")
 	}
-	if space.Id != 9991 {
-		t.Errorf("space 9991 has incorrect Id")
+	if space.Id != 514 {
+		t.Errorf("space 514 has incorrect Id")
 	}
 	if space.Name != "schematest" {
-		t.Errorf("space 9991 has incorrect Name")
+		t.Errorf("space 514 has incorrect Name")
 	}
 	if !space.Temporary {
-		t.Errorf("space 9991 should be temporary")
+		t.Errorf("space 514 should be temporary")
 	}
 	if space.Engine != "memtx" {
-		t.Errorf("space 9991 engine should be memtx")
+		t.Errorf("space 514 engine should be memtx")
 	}
 	if space.FieldsCount != 7 {
-		t.Errorf("space 9991 has incorrect fields count")
+		t.Errorf("space 514 has incorrect fields count")
 	}
 
+	if space.FieldsById == nil {
+		t.Errorf("space.FieldsById is nill")
+	}
 	if space.Fields == nil {
 		t.Errorf("space.Fields is nill")
 	}
-	if space.FieldsN == nil {
-		t.Errorf("space.FieldsN is nill")
+	if len(space.FieldsById) != 3 {
+		t.Errorf("space.FieldsById len is incorrect")
 	}
-	if len(space.Fields) != 3 {
+	if len(space.Fields) != 2 {
 		t.Errorf("space.Fields len is incorrect")
-	}
-	if len(space.FieldsN) != 2 {
-		t.Errorf("space.FieldsN len is incorrect")
 	}
 
 	var field1, field2, field5, field1_, field5_ *Field
-	if field1, ok = space.Fields[1]; !ok {
+	if field1, ok = space.FieldsById[1]; !ok {
 		t.Errorf("field id = 1 was not found")
 	}
-	if field2, ok = space.Fields[2]; !ok {
+	if field2, ok = space.FieldsById[2]; !ok {
 		t.Errorf("field id = 2 was not found")
 	}
-	if field5, ok = space.Fields[5]; !ok {
+	if field5, ok = space.FieldsById[5]; !ok {
 		t.Errorf("field id = 5 was not found")
 	}
 
-	if field1_, ok = space.FieldsN["name1"]; !ok {
+	if field1_, ok = space.Fields["name1"]; !ok {
 		t.Errorf("field name = name1 was not found")
 	}
-	if field5_, ok = space.FieldsN["name5"]; !ok {
+	if field5_, ok = space.Fields["name5"]; !ok {
 		t.Errorf("field name = name5 was not found")
 	}
 	if field1 != field1_ || field5 != field5_ {
@@ -574,30 +602,30 @@ func TestClient(t *testing.T) {
 		t.Errorf("field 2 has incorrect Type")
 	}
 
+	if space.IndexesById == nil {
+		t.Errorf("space.IndexesById is nill")
+	}
 	if space.Indexes == nil {
 		t.Errorf("space.Indexes is nill")
 	}
-	if space.IndexesN == nil {
-		t.Errorf("space.IndexesN is nill")
+	if len(space.IndexesById) != 2 {
+		t.Errorf("space.IndexesById len is incorrect")
 	}
 	if len(space.Indexes) != 2 {
 		t.Errorf("space.Indexes len is incorrect")
 	}
-	if len(space.IndexesN) != 2 {
-		t.Errorf("space.IndexesN len is incorrect")
-	}
 
 	var index0, index3, index0_, index3_ *Index
-	if index0, ok = space.Indexes[0]; !ok {
+	if index0, ok = space.IndexesById[0]; !ok {
 		t.Errorf("index id = 0 was not found")
 	}
-	if index3, ok = space.Indexes[3]; !ok {
+	if index3, ok = space.IndexesById[3]; !ok {
 		t.Errorf("index id = 3 was not found")
 	}
-	if index0_, ok = space.IndexesN["primary"]; !ok {
+	if index0_, ok = space.Indexes["primary"]; !ok {
 		t.Errorf("index name = primary was not found")
 	}
-	if index3_, ok = space.IndexesN["secondary"]; !ok {
+	if index3_, ok = space.Indexes["secondary"]; !ok {
 		t.Errorf("index name = secondary was not found")
 	}
 	if index0 != index0_ || index3 != index3_ {
@@ -632,5 +660,121 @@ func TestClient(t *testing.T) {
 	}
 	if ifield1.Type != "num" || ifield2.Type != "STR" {
 		t.Errorf("index field has incorrect Type[")
+	}
+
+	var rSpaceNo, rIndexNo uint32
+	rSpaceNo, rIndexNo, err = schema.resolveSpaceIndex(514, 3)
+	if err != nil || rSpaceNo != 514 || rIndexNo != 3 {
+		t.Errorf("numeric space and index params not resolved as-is")
+	}
+	rSpaceNo, rIndexNo, err = schema.resolveSpaceIndex(514, nil)
+	if err != nil || rSpaceNo != 514 {
+		t.Errorf("numeric space param not resolved as-is")
+	}
+	rSpaceNo, rIndexNo, err = schema.resolveSpaceIndex("schematest", "secondary")
+	if err != nil || rSpaceNo != 514 || rIndexNo != 3 {
+		t.Errorf("symbolic space and index params not resolved")
+	}
+	rSpaceNo, rIndexNo, err = schema.resolveSpaceIndex("schematest", nil)
+	if err != nil || rSpaceNo != 514 {
+		t.Errorf("symbolic space param not resolved")
+	}
+	rSpaceNo, rIndexNo, err = schema.resolveSpaceIndex("schematest22", "secondary")
+	if err == nil {
+		t.Errorf("resolveSpaceIndex didn't returned error with not existing space name")
+	}
+	rSpaceNo, rIndexNo, err = schema.resolveSpaceIndex("schematest", "secondary22")
+	if err == nil {
+		t.Errorf("resolveSpaceIndex didn't returned error with not existing index name")
+	}
+}
+
+func TestClientNamed(t *testing.T) {
+	var resp *Response
+	var err error
+	var conn *Connection
+
+	conn, err = Connect(server, opts)
+	if err != nil {
+		t.Errorf("Failed to connect: %s", err.Error())
+		return
+	}
+	if conn == nil {
+		t.Errorf("conn is nil after Connect")
+		return
+	}
+
+	// Insert
+	resp, err = conn.Insert(spaceName, []interface{}{uint(1001), "hello2", "world2"})
+	if err != nil {
+		t.Errorf("Failed to Insert: %s", err.Error())
+	}
+
+	// Delete
+	resp, err = conn.Delete(spaceName, indexName, []interface{}{uint(1001)})
+	if err != nil {
+		t.Errorf("Failed to Delete: %s", err.Error())
+	}
+	if resp == nil {
+		t.Errorf("Response is nil after Delete")
+	}
+
+	// Replace
+	resp, err = conn.Replace(spaceName, []interface{}{uint(1002), "hello", "world"})
+	if err != nil {
+		t.Errorf("Failed to Replace: %s", err.Error())
+	}
+	if resp == nil {
+		t.Errorf("Response is nil after Replace")
+	}
+
+	// Update
+	resp, err = conn.Update(spaceName, indexName, []interface{}{uint(1002)}, []interface{}{[]interface{}{"=", 1, "bye"}, []interface{}{"#", 2, 1}})
+	if err != nil {
+		t.Errorf("Failed to Update: %s", err.Error())
+	}
+	if resp == nil {
+		t.Errorf("Response is nil after Update")
+	}
+
+	// Upsert
+	resp, err = conn.Upsert(spaceName, []interface{}{uint(1003), 1}, []interface{}{[]interface{}{"+", 1, 1}})
+	if err != nil {
+		t.Errorf("Failed to Upsert (insert): %s", err.Error())
+	}
+	if resp == nil {
+		t.Errorf("Response is nil after Upsert (insert)")
+	}
+	resp, err = conn.Upsert(spaceName, []interface{}{uint(1003), 1}, []interface{}{[]interface{}{"+", 1, 1}})
+	if err != nil {
+		t.Errorf("Failed to Upsert (update): %s", err.Error())
+	}
+	if resp == nil {
+		t.Errorf("Response is nil after Upsert (update)")
+	}
+
+	// Select
+	for i := 1010; i < 1020; i++ {
+		resp, err = conn.Replace(spaceName, []interface{}{uint(i), fmt.Sprintf("val %d", i), "bla"})
+		if err != nil {
+			t.Errorf("Failed to Replace: %s", err.Error())
+		}
+	}
+	resp, err = conn.Select(spaceName, indexName, 0, 1, IterEq, []interface{}{uint(1010)})
+	if err != nil {
+		t.Errorf("Failed to Select: %s", err.Error())
+	}
+	if resp == nil {
+		t.Errorf("Response is nil after Select")
+	}
+
+	// Select Typed
+	var tpl []tuple
+	err = conn.SelectTyped(spaceName, indexName, 0, 1, IterEq, []interface{}{uint(1010)}, &tpl)
+	if err != nil {
+		t.Errorf("Failed to SelectTyped: %s", err.Error())
+	}
+	if len(tpl) != 1 {
+		t.Errorf("Result len of SelectTyped != 1")
 	}
 }

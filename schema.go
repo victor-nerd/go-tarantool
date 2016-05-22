@@ -1,13 +1,13 @@
 package tarantool
 
 import (
-	_ "fmt"
+	"fmt"
 )
 
 type Schema struct {
-	Version uint
-	Spaces  map[uint32]*Space
-	SpacesN map[string]*Space
+	Version    uint
+	Spaces     map[string]*Space
+	SpacesById map[uint32]*Space
 }
 
 type Space struct {
@@ -16,10 +16,10 @@ type Space struct {
 	Engine      string
 	Temporary   bool
 	FieldsCount uint32
-	Fields      map[uint32]*Field
-	FieldsN     map[string]*Field
-	Indexes     map[uint32]*Index
-	IndexesN    map[string]*Index
+	Fields      map[string]*Field
+	FieldsById  map[uint32]*Field
+	Indexes     map[string]*Index
+	IndexesById map[uint32]*Index
 }
 
 type Field struct {
@@ -54,8 +54,8 @@ func (conn *Connection) loadSchema() (err error) {
 	var resp *Response
 
 	schema := new(Schema)
-	schema.Spaces = make(map[uint32]*Space)
-	schema.SpacesN = make(map[string]*Space)
+	schema.SpacesById = make(map[uint32]*Space)
+	schema.Spaces = make(map[string]*Space)
 
 	// reload spaces
 	req = conn.NewRequest(SelectRequest)
@@ -75,10 +75,10 @@ func (conn *Connection) loadSchema() (err error) {
 		if len(row) >= 6 {
 			space.Temporary = bool(row[5].(string) == "temporary")
 		}
-		space.Fields = make(map[uint32]*Field)
-		space.FieldsN = make(map[string]*Field)
-		space.Indexes = make(map[uint32]*Index)
-		space.IndexesN = make(map[string]*Index)
+		space.FieldsById = make(map[uint32]*Field)
+		space.Fields = make(map[string]*Field)
+		space.IndexesById = make(map[uint32]*Index)
+		space.Indexes = make(map[string]*Index)
 		if len(row) >= 7 {
 			for i, f := range row[6].([]interface{}) {
 				if f == nil {
@@ -93,15 +93,15 @@ func (conn *Connection) loadSchema() (err error) {
 				if type_, ok := f["type"]; ok && type_ != nil {
 					field.Type = type_.(string)
 				}
-				space.Fields[field.Id] = field
+				space.FieldsById[field.Id] = field
 				if field.Name != "" {
-					space.FieldsN[field.Name] = field
+					space.Fields[field.Name] = field
 				}
 			}
 		}
 
-		schema.Spaces[space.Id] = space
-		schema.SpacesN[space.Name] = space
+		schema.SpacesById[space.Id] = space
+		schema.Spaces[space.Name] = space
 	}
 
 	// reload indexes
@@ -148,9 +148,87 @@ func (conn *Connection) loadSchema() (err error) {
 			panic("unexpected schema format (index fields)")
 		}
 		spaceId := uint32(row[0].(uint64))
-		schema.Spaces[spaceId].Indexes[index.Id] = index
-		schema.Spaces[spaceId].IndexesN[index.Name] = index
+		schema.SpacesById[spaceId].IndexesById[index.Id] = index
+		schema.SpacesById[spaceId].Indexes[index.Name] = index
 	}
 	conn.Schema = schema
 	return nil
+}
+
+func (schema *Schema) resolveSpaceIndex(s interface{}, i interface{}) (spaceNo, indexNo uint32, err error) {
+	var space *Space
+	var index *Index
+	var ok bool
+
+	switch s := s.(type) {
+	case string:
+		if space, ok = schema.Spaces[s]; !ok {
+			err = fmt.Errorf("there is no space with name %s", s)
+			return
+		}
+		spaceNo = space.Id
+	case uint:
+		spaceNo = uint32(s)
+	case uint64:
+		spaceNo = uint32(s)
+	case uint32:
+		spaceNo = uint32(s)
+	case uint16:
+		spaceNo = uint32(s)
+	case uint8:
+		spaceNo = uint32(s)
+	case int:
+		spaceNo = uint32(s)
+	case int64:
+		spaceNo = uint32(s)
+	case int32:
+		spaceNo = uint32(s)
+	case int16:
+		spaceNo = uint32(s)
+	case int8:
+		spaceNo = uint32(s)
+	default:
+		panic("unexpected type of space param")
+	}
+
+	if i != nil {
+		switch i := i.(type) {
+		case string:
+			if space == nil {
+				if space, ok = schema.SpacesById[spaceNo]; !ok {
+					err = fmt.Errorf("there is no space with id %d", spaceNo)
+					return
+				}
+			}
+			if index, ok = space.Indexes[i]; !ok {
+				err = fmt.Errorf("space %s has not index with name %s", space.Name, i)
+				return
+			}
+			indexNo = index.Id
+		case uint:
+			indexNo = uint32(i)
+		case uint64:
+			indexNo = uint32(i)
+		case uint32:
+			indexNo = uint32(i)
+		case uint16:
+			indexNo = uint32(i)
+		case uint8:
+			indexNo = uint32(i)
+		case int:
+			indexNo = uint32(i)
+		case int64:
+			indexNo = uint32(i)
+		case int32:
+			indexNo = uint32(i)
+		case int16:
+			indexNo = uint32(i)
+		case int8:
+			indexNo = uint32(i)
+		default:
+			panic("unexpected type of index param")
+		}
+	}
+
+	return
 }

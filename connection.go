@@ -227,7 +227,7 @@ func (conn *Connection) closeConnection(neterr error) (err error) {
 	conn.w = nil
 	for rid, fut := range conn.requests {
 		fut.err = neterr
-		close(fut.c)
+		close(fut.ready)
 		delete(conn.requests, rid)
 	}
 	return
@@ -292,7 +292,7 @@ func (conn *Connection) reader() {
 		if fut, ok := conn.requests[resp.RequestId]; ok {
 			delete(conn.requests, resp.RequestId)
 			fut.resp = resp
-			close(fut.c)
+			close(fut.ready)
 			conn.mutex.Unlock()
 		} else {
 			conn.mutex.Unlock()

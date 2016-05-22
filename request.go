@@ -15,12 +15,11 @@ type Request struct {
 }
 
 type Future struct {
-	conn *Connection
-	id   uint32
-	resp Response
-	err  error
-	c    chan struct{}
-	t    *time.Timer
+	req     *Request
+	resp    Response
+	err     error
+	ready   chan struct{}
+	timeout *time.Timer
 }
 
 func (conn *Connection) NewRequest(requestCode int32) (req *Request) {
@@ -29,7 +28,6 @@ func (conn *Connection) NewRequest(requestCode int32) (req *Request) {
 	req.requestId = conn.nextRequestId()
 	req.requestCode = requestCode
 	req.body = make(map[int]interface{})
-
 	return
 }
 
@@ -39,68 +37,97 @@ func (conn *Connection) Ping() (resp *Response, err error) {
 	return
 }
 
-func (r *Request) fillSearch(spaceNo, indexNo uint32, key []interface{}) {
-	r.body[KeySpaceNo] = spaceNo
-	r.body[KeyIndexNo] = indexNo
-	r.body[KeyKey] = key
-}
-func (r *Request) fillIterator(offset, limit, iterator uint32) {
-	r.body[KeyIterator] = iterator
-	r.body[KeyOffset] = offset
-	r.body[KeyLimit] = limit
+func (req *Request) fillSearch(spaceNo, indexNo uint32, key []interface{}) {
+	req.body[KeySpaceNo] = spaceNo
+	req.body[KeyIndexNo] = indexNo
+	req.body[KeyKey] = key
 }
 
-func (r *Request) fillInsert(spaceNo uint32, tuple []interface{}) {
-	r.body[KeySpaceNo] = spaceNo
-	r.body[KeyTuple] = tuple
+func (req *Request) fillIterator(offset, limit, iterator uint32) {
+	req.body[KeyIterator] = iterator
+	req.body[KeyOffset] = offset
+	req.body[KeyLimit] = limit
 }
 
-func (conn *Connection) Select(spaceNo, indexNo, offset, limit, iterator uint32, key []interface{}) (resp *Response, err error) {
+func (req *Request) fillInsert(spaceNo uint32, tuple []interface{}) {
+	req.body[KeySpaceNo] = spaceNo
+	req.body[KeyTuple] = tuple
+}
+
+func (conn *Connection) Select(space, index interface{}, offset, limit, iterator uint32, key []interface{}) (resp *Response, err error) {
 	request := conn.NewRequest(SelectRequest)
+	spaceNo, indexNo, err := conn.Schema.resolveSpaceIndex(space, index)
+	if err != nil {
+		return
+	}
 	request.fillSearch(spaceNo, indexNo, key)
 	request.fillIterator(offset, limit, iterator)
 	resp, err = request.perform()
 	return
 }
 
-func (conn *Connection) SelectTyped(spaceNo, indexNo, offset, limit, iterator uint32, key []interface{}, result interface{}) error {
+func (conn *Connection) SelectTyped(space, index interface{}, offset, limit, iterator uint32, key []interface{}, result interface{}) (err error) {
 	request := conn.NewRequest(SelectRequest)
+	spaceNo, indexNo, err := conn.Schema.resolveSpaceIndex(space, index)
+	if err != nil {
+		return
+	}
 	request.fillSearch(spaceNo, indexNo, key)
 	request.fillIterator(offset, limit, iterator)
 	return request.performTyped(result)
 }
 
-func (conn *Connection) Insert(spaceNo uint32, tuple []interface{}) (resp *Response, err error) {
+func (conn *Connection) Insert(space interface{}, tuple []interface{}) (resp *Response, err error) {
 	request := conn.NewRequest(InsertRequest)
+	spaceNo, _, err := conn.Schema.resolveSpaceIndex(space, nil)
+	if err != nil {
+		return
+	}
 	request.fillInsert(spaceNo, tuple)
 	resp, err = request.perform()
 	return
 }
 
-func (conn *Connection) Replace(spaceNo uint32, tuple []interface{}) (resp *Response, err error) {
+func (conn *Connection) Replace(space interface{}, tuple []interface{}) (resp *Response, err error) {
 	request := conn.NewRequest(ReplaceRequest)
+	spaceNo, _, err := conn.Schema.resolveSpaceIndex(space, nil)
+	if err != nil {
+		return
+	}
 	request.fillInsert(spaceNo, tuple)
 	resp, err = request.perform()
 	return
 }
 
-func (conn *Connection) Delete(spaceNo, indexNo uint32, key []interface{}) (resp *Response, err error) {
+func (conn *Connection) Delete(space, index interface{}, key []interface{}) (resp *Response, err error) {
 	request := conn.NewRequest(DeleteRequest)
+	spaceNo, indexNo, err := conn.Schema.resolveSpaceIndex(space, index)
+	if err != nil {
+		return
+	}
 	request.fillSearch(spaceNo, indexNo, key)
 	resp, err = request.perform()
 	return
 }
 
-func (conn *Connection) Update(spaceNo, indexNo uint32, key, ops []interface{}) (resp *Response, err error) {
+func (conn *Connection) Update(space, index interface{}, key, ops []interface{}) (resp *Response, err error) {
 	request := conn.NewRequest(UpdateRequest)
+	spaceNo, indexNo, err := conn.Schema.resolveSpaceIndex(space, index)
+	if err != nil {
+		return
+	}
 	request.fillSearch(spaceNo, indexNo, key)
 	request.body[KeyTuple] = ops
 	resp, err = request.perform()
 	return
 }
 
-func (conn *Connection) Upsert(spaceNo uint32, tuple, ops []interface{}) (resp *Response, err error) {
+func (conn *Connection) Upsert(space interface{}, tuple, ops []interface{}) (resp *Response, err error) {
 	request := conn.NewRequest(UpsertRequest)
+	spaceNo, _, err := conn.Schema.resolveSpaceIndex(space, nil)
+	if err != nil {
+		return
+	}
 	request.body[KeySpaceNo] = spaceNo
 	request.body[KeyTuple] = tuple
 	request.body[KeyDefTuple] = ops
@@ -124,40 +151,64 @@ func (conn *Connection) Eval(expr string, tuple []interface{}) (resp *Response, 
 	return
 }
 
-func (conn *Connection) SelectAsync(spaceNo, indexNo, offset, limit, iterator uint32, key []interface{}) *Future {
+func (conn *Connection) SelectAsync(space, index interface{}, offset, limit, iterator uint32, key []interface{}) *Future {
 	request := conn.NewRequest(SelectRequest)
+	spaceNo, indexNo, err := conn.Schema.resolveSpaceIndex(space, index)
+	if err != nil {
+		return badfuture(err)
+	}
 	request.fillSearch(spaceNo, indexNo, key)
 	request.fillIterator(offset, limit, iterator)
 	return request.future()
 }
 
-func (conn *Connection) InsertAsync(spaceNo uint32, tuple []interface{}) *Future {
+func (conn *Connection) InsertAsync(space interface{}, tuple []interface{}) *Future {
 	request := conn.NewRequest(InsertRequest)
+	spaceNo, _, err := conn.Schema.resolveSpaceIndex(space, nil)
+	if err != nil {
+		return badfuture(err)
+	}
 	request.fillInsert(spaceNo, tuple)
 	return request.future()
 }
 
-func (conn *Connection) ReplaceAsync(spaceNo uint32, tuple []interface{}) *Future {
+func (conn *Connection) ReplaceAsync(space interface{}, tuple []interface{}) *Future {
 	request := conn.NewRequest(ReplaceRequest)
+	spaceNo, _, err := conn.Schema.resolveSpaceIndex(space, nil)
+	if err != nil {
+		return badfuture(err)
+	}
 	request.fillInsert(spaceNo, tuple)
 	return request.future()
 }
 
-func (conn *Connection) DeleteAsync(spaceNo, indexNo uint32, key []interface{}) *Future {
+func (conn *Connection) DeleteAsync(space, index interface{}, key []interface{}) *Future {
 	request := conn.NewRequest(DeleteRequest)
+	spaceNo, indexNo, err := conn.Schema.resolveSpaceIndex(space, index)
+	if err != nil {
+		return badfuture(err)
+	}
 	request.fillSearch(spaceNo, indexNo, key)
 	return request.future()
 }
 
-func (conn *Connection) UpdateAsync(spaceNo, indexNo uint32, key, ops []interface{}) *Future {
+func (conn *Connection) UpdateAsync(space, index interface{}, key, ops []interface{}) *Future {
 	request := conn.NewRequest(UpdateRequest)
+	spaceNo, indexNo, err := conn.Schema.resolveSpaceIndex(space, index)
+	if err != nil {
+		return badfuture(err)
+	}
 	request.fillSearch(spaceNo, indexNo, key)
 	request.body[KeyTuple] = ops
 	return request.future()
 }
 
-func (conn *Connection) UpsertAsync(spaceNo uint32, tuple, ops []interface{}) *Future {
+func (conn *Connection) UpsertAsync(space interface{}, tuple, ops []interface{}) *Future {
 	request := conn.NewRequest(UpsertRequest)
+	spaceNo, _, err := conn.Schema.resolveSpaceIndex(space, nil)
+	if err != nil {
+		return badfuture(err)
+	}
 	request.body[KeySpaceNo] = spaceNo
 	request.body[KeyTuple] = tuple
 	request.body[KeyDefTuple] = ops
@@ -217,84 +268,88 @@ func (req *Request) pack() (packet []byte, err error) {
 	return
 }
 
-func (req *Request) future() (f *Future) {
-	f = &Future{
-		conn: req.conn,
-		id:   req.requestId,
-		c:    make(chan struct{}),
-	}
+func (req *Request) future() (fut *Future) {
+	fut = &Future{req: req}
 
 	// check connection ready to process packets
-	if c := f.conn.c; c == nil {
-		close(f.c)
-		f.err = errors.New("client connection is not ready")
-		return // we shouldn't perform this request
+	if c := req.conn.c; c == nil {
+		fut.err = errors.New("client connection is not ready")
+		return
 	}
 
 	var packet []byte
-	if packet, f.err = req.pack(); f.err != nil {
-		close(f.c)
+	if packet, fut.err = req.pack(); fut.err != nil {
 		return
 	}
 
 	req.conn.mutex.Lock()
 	if req.conn.closed {
 		req.conn.mutex.Unlock()
-		f.err = errors.New("using closed connection")
-		close(f.c)
+		fut.err = errors.New("using closed connection")
 		return
 	}
-
-	req.conn.requests[req.requestId] = f
+	req.conn.requests[req.requestId] = fut
 	req.conn.mutex.Unlock()
+
+	fut.ready = make(chan struct{})
+	// TODO: packets may lock
 	req.conn.packets <- (packet)
 
 	if req.conn.opts.Timeout > 0 {
-		f.t = time.NewTimer(req.conn.opts.Timeout)
+		fut.timeout = time.NewTimer(req.conn.opts.Timeout)
 	}
 	return
 }
 
-func (f *Future) wait() {
+func badfuture(err error) *Future {
+	return &Future{err: err}
+}
+
+func (fut *Future) wait() {
+	if fut.ready == nil {
+		return
+	}
+	conn := fut.req.conn
+	requestId := fut.req.requestId
 	select {
-	case <-f.c:
+	case <-fut.ready:
 	default:
-		if t := f.t; t != nil {
+		if timeout := fut.timeout; timeout != nil {
 			select {
-			case <-f.c:
-			case <-t.C:
-				f.conn.mutex.Lock()
-				if _, ok := f.conn.requests[f.id]; ok {
-					delete(f.conn.requests, f.id)
-					close(f.c)
-					f.err = fmt.Errorf("client timeout for request %d", f.id)
+			case <-fut.ready:
+			case <-timeout.C:
+				conn.mutex.Lock()
+				if _, ok := conn.requests[requestId]; ok {
+					delete(conn.requests, requestId)
+					close(fut.ready)
+					fut.err = fmt.Errorf("client timeout for request %d", requestId)
 				}
-				f.conn.mutex.Unlock()
+				conn.mutex.Unlock()
 			}
 		} else {
-			<-f.c
+			<-fut.ready
 		}
 	}
-	if f.t != nil {
-		f.t.Stop()
-		f.t = nil
+	if fut.timeout != nil {
+		fut.timeout.Stop()
+		fut.timeout = nil
 	}
 }
 
-func (f *Future) Get() (*Response, error) {
-	f.wait()
-	if f.err != nil {
-		return &f.resp, f.err
+func (fut *Future) Get() (*Response, error) {
+	fut.wait()
+	if fut.err != nil {
+		return &fut.resp, fut.err
 	}
-	f.err = f.resp.decodeBody()
-	return &f.resp, f.err
+	fut.err = fut.resp.decodeBody()
+	return &fut.resp, fut.err
 }
 
-func (f *Future) GetTyped(r interface{}) error {
-	f.wait()
-	if f.err != nil {
-		return f.err
+func (fut *Future) GetTyped(result interface{}) error {
+	fut.wait()
+	if fut.err != nil {
+		return fut.err
 	}
-	f.err = f.resp.decodeBodyTyped(r)
-	return f.err
+	fut.err = fut.resp.decodeBodyTyped(result)
+	return fut.err
 }
