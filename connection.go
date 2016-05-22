@@ -18,6 +18,7 @@ type Connection struct {
 	r         *bufio.Reader
 	w         *bufio.Writer
 	mutex     *sync.Mutex
+	Schema    *Schema
 	requestId uint32
 	Greeting  *Greeting
 	requests  map[uint32]*Future
@@ -64,6 +65,11 @@ func Connect(addr string, opts Opts) (conn *Connection, err error) {
 
 	go conn.writer()
 	go conn.reader()
+
+	if err = conn.loadSchema(); err != nil {
+		conn.closeConnection(err)
+		return nil, err
+	}
 
 	return conn, err
 }
@@ -221,7 +227,7 @@ func (conn *Connection) closeConnection(neterr error) (err error) {
 	conn.w = nil
 	for rid, fut := range conn.requests {
 		fut.err = neterr
-		close(fut.c)
+		close(fut.ready)
 		delete(conn.requests, rid)
 	}
 	return
@@ -286,7 +292,7 @@ func (conn *Connection) reader() {
 		if fut, ok := conn.requests[resp.RequestId]; ok {
 			delete(conn.requests, resp.RequestId)
 			fut.resp = resp
-			close(fut.c)
+			close(fut.ready)
 			conn.mutex.Unlock()
 		} else {
 			conn.mutex.Unlock()
