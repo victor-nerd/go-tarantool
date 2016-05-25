@@ -73,7 +73,16 @@ func (conn *Connection) loadSchema() (err error) {
 		space.Engine = row[3].(string)
 		space.FieldsCount = uint32(row[4].(uint64))
 		if len(row) >= 6 {
-			space.Temporary = bool(row[5].(string) == "temporary")
+			switch row5 := row[5].(type) {
+			case string:
+				space.Temporary = row5 == "temporary"
+			case map[interface{}]interface{}:
+				if temp, ok := row5["temporary"]; ok {
+					space.Temporary = temp.(bool)
+				}
+			default:
+				panic("unexpected schema format (space flags)")
+			}
 		}
 		space.FieldsById = make(map[uint32]*Field)
 		space.Fields = make(map[string]*Field)
