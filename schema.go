@@ -59,7 +59,7 @@ func (conn *Connection) loadSchema() (err error) {
 
 	// reload spaces
 	req = conn.NewRequest(SelectRequest)
-	req.fillSearch(spaceSpId, 0, []interface{}{})
+	req.fillSearch(vspaceSpId, 0, []interface{}{})
 	req.fillIterator(0, maxSchemas, IterAll)
 	resp, err = req.perform()
 	if err != nil {
@@ -115,7 +115,7 @@ func (conn *Connection) loadSchema() (err error) {
 
 	// reload indexes
 	req = conn.NewRequest(SelectRequest)
-	req.fillSearch(indexSpId, 0, []interface{}{})
+	req.fillSearch(vindexSpId, 0, []interface{}{})
 	req.fillIterator(0, maxSchemas, IterAll)
 	resp, err = req.perform()
 	if err != nil {

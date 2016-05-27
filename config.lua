@@ -42,7 +42,9 @@ st:truncate()
 -- auth testing: access control
 if not box.schema.user.exists('test') then
     box.schema.user.create('test', {password = 'test'})
-    box.schema.user.grant('test', 'read,write,execute', 'universe')
+    box.schema.user.grant('test', 'execute', 'universe')
+    box.schema.user.grant('test', 'read,write', 'space', 'test')
+    box.schema.user.grant('test', 'read,write', 'space', 'schematest')
 end
 
 local console = require 'console'
