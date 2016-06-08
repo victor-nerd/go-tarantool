@@ -4,18 +4,151 @@ import (
 	"fmt"
 	"gopkg.in/vmihailenco/msgpack.v2"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
 
-type tuple struct {
+type Tuple struct {
 	Id   uint
 	Msg  string
 	Name string
 }
 
+type Member struct {
+	Name  string
+	Nonce string
+	Val   uint
+}
+
+type Tuple2 struct {
+	Cid     uint
+	Orig    string
+	Members []Member
+}
+
+func encodeTuple(e *msgpack.Encoder, v reflect.Value) error {
+	t := v.Interface().(Tuple)
+	if err := e.EncodeSliceLen(3); err != nil {
+		return err
+	}
+	if err := e.EncodeUint(t.Id); err != nil {
+		return err
+	}
+	if err := e.EncodeString(t.Msg); err != nil {
+		return err
+	}
+	if err := e.EncodeString(t.Name); err != nil {
+		return err
+	}
+	return nil
+}
+
+func decodeTuple(d *msgpack.Decoder, v reflect.Value) error {
+	var err error
+	var l int
+	t := v.Addr().Interface().(*Tuple)
+	if l, err = d.DecodeSliceLen(); err != nil {
+		return err
+	}
+	if l != 3 {
+		return fmt.Errorf("array len doesn't match: %d", l)
+	}
+	if t.Id, err = d.DecodeUint(); err != nil {
+		return err
+	}
+	if t.Msg, err = d.DecodeString(); err != nil {
+		return err
+	}
+	if t.Name, err = d.DecodeString(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func encodeMember(e *msgpack.Encoder, v reflect.Value) error {
+	m := v.Interface().(Member)
+	if err := e.EncodeSliceLen(2); err != nil {
+		return err
+	}
+	if err := e.EncodeString(m.Name); err != nil {
+		return err
+	}
+	if err := e.EncodeUint(m.Val); err != nil {
+		return err
+	}
+	return nil
+}
+
+func decodeMember(d *msgpack.Decoder, v reflect.Value) error {
+	var err error
+	var l int
+	m := v.Addr().Interface().(*Member)
+	if l, err = d.DecodeSliceLen(); err != nil {
+		return err
+	}
+	if l != 2 {
+		return fmt.Errorf("array len doesn't match: %d", l)
+	}
+	if m.Name, err = d.DecodeString(); err != nil {
+		return err
+	}
+	if m.Val, err = d.DecodeUint(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func encodeTuple2(e *msgpack.Encoder, v reflect.Value) error {
+	c := v.Interface().(Tuple2)
+	if err := e.EncodeSliceLen(3); err != nil {
+		return err
+	}
+	if err := e.EncodeUint(c.Cid); err != nil {
+		return err
+	}
+	if err := e.EncodeString(c.Orig); err != nil {
+		return err
+	}
+	if err := e.EncodeSliceLen(len(c.Members)); err != nil {
+		return err
+	}
+	for _, m := range c.Members {
+		e.Encode(m)
+	}
+	return nil
+}
+
+func decodeTuple2(d *msgpack.Decoder, v reflect.Value) error {
+	var err error
+	var l int
+	c := v.Addr().Interface().(*Tuple2)
+	if l, err = d.DecodeSliceLen(); err != nil {
+		return err
+	}
+	if l != 3 {
+		return fmt.Errorf("array len doesn't match: %d", l)
+	}
+	if c.Cid, err = d.DecodeUint(); err != nil {
+		return err
+	}
+	if c.Orig, err = d.DecodeString(); err != nil {
+		return err
+	}
+	if l, err = d.DecodeSliceLen(); err != nil {
+		return err
+	}
+	c.Members = make([]Member, l)
+	for i := 0; i < l; i++ {
+		d.Decode(&c.Members[i])
+	}
+	return nil
+}
+
 func init() {
-	msgpack.Register(reflect.TypeOf(new(tuple)).Elem(), encodeTuple, decodeTuple)
+	msgpack.Register(reflect.TypeOf(Tuple{}), encodeTuple, decodeTuple)
+	msgpack.Register(reflect.TypeOf(Tuple2{}), encodeTuple2, decodeTuple2)
+	msgpack.Register(reflect.TypeOf(Member{}), encodeMember, decodeMember)
 }
 
 var server = "127.0.0.1:3013"
@@ -79,45 +212,6 @@ func BenchmarkClientFuture(b *testing.B) {
 	}
 }
 
-func encodeTuple(e *msgpack.Encoder, v reflect.Value) error {
-	t := v.Interface().(tuple)
-	if err := e.EncodeSliceLen(3); err != nil {
-		return err
-	}
-	if err := e.EncodeUint(t.Id); err != nil {
-		return err
-	}
-	if err := e.EncodeString(t.Msg); err != nil {
-		return err
-	}
-	if err := e.EncodeString(t.Name); err != nil {
-		return err
-	}
-	return nil
-}
-
-func decodeTuple(d *msgpack.Decoder, v reflect.Value) error {
-	var err error
-	var l int
-	t := v.Addr().Interface().(*tuple)
-	if l, err = d.DecodeSliceLen(); err != nil {
-		return err
-	}
-	if l != 3 {
-		return fmt.Errorf("array len doesn't match: %d", l)
-	}
-	if t.Id, err = d.DecodeUint(); err != nil {
-		return err
-	}
-	if t.Msg, err = d.DecodeString(); err != nil {
-		return err
-	}
-	if t.Name, err = d.DecodeString(); err != nil {
-		return err
-	}
-	return nil
-}
-
 func BenchmarkClientFutureTyped(b *testing.B) {
 	var err error
 
@@ -138,7 +232,7 @@ func BenchmarkClientFutureTyped(b *testing.B) {
 			fs[j] = conn.SelectAsync(spaceNo, indexNo, 0, 1, IterEq, []interface{}{uint(1111)})
 		}
 		for j := 0; j < N; j++ {
-			var r []tuple
+			var r []Tuple
 			err = fs[j].GetTyped(&r)
 			if err != nil {
 				b.Error(err)
@@ -209,7 +303,7 @@ func BenchmarkClientFutureParallelTyped(b *testing.B) {
 			}
 			exit = j < N
 			for j > 0 {
-				var r []tuple
+				var r []Tuple
 				j--
 				err = fs[j].GetTyped(&r)
 				if err != nil {
@@ -399,19 +493,21 @@ func TestClient(t *testing.T) {
 	}
 
 	// Upsert
-	resp, err = conn.Upsert(spaceNo, []interface{}{uint(3), 1}, []interface{}{[]interface{}{"+", 1, 1}})
-	if err != nil {
-		t.Errorf("Failed to Upsert (insert): %s", err.Error())
-	}
-	if resp == nil {
-		t.Errorf("Response is nil after Upsert (insert)")
-	}
-	resp, err = conn.Upsert(spaceNo, []interface{}{uint(3), 1}, []interface{}{[]interface{}{"+", 1, 1}})
-	if err != nil {
-		t.Errorf("Failed to Upsert (update): %s", err.Error())
-	}
-	if resp == nil {
-		t.Errorf("Response is nil after Upsert (update)")
+	if strings.Compare(conn.Greeting.Version, "Tarantool 1.6.7") >= 0 {
+		resp, err = conn.Upsert(spaceNo, []interface{}{uint(3), 1}, []interface{}{[]interface{}{"+", 1, 1}})
+		if err != nil {
+			t.Errorf("Failed to Upsert (insert): %s", err.Error())
+		}
+		if resp == nil {
+			t.Errorf("Response is nil after Upsert (insert)")
+		}
+		resp, err = conn.Upsert(spaceNo, []interface{}{uint(3), 1}, []interface{}{[]interface{}{"+", 1, 1}})
+		if err != nil {
+			t.Errorf("Failed to Upsert (update): %s", err.Error())
+		}
+		if resp == nil {
+			t.Errorf("Response is nil after Upsert (update)")
+		}
 	}
 
 	// Select
@@ -455,7 +551,7 @@ func TestClient(t *testing.T) {
 	}
 
 	// Select Typed
-	var tpl []tuple
+	var tpl []Tuple
 	err = conn.SelectTyped(spaceNo, indexNo, 0, 1, IterEq, []interface{}{uint(10)}, &tpl)
 	if err != nil {
 		t.Errorf("Failed to SelectTyped: %s", err.Error())
@@ -469,7 +565,7 @@ func TestClient(t *testing.T) {
 	}
 
 	// Select Typed Empty
-	var tpl2 []tuple
+	var tpl2 []Tuple
 	err = conn.SelectTyped(spaceNo, indexNo, 0, 1, IterEq, []interface{}{uint(30)}, &tpl2)
 	if err != nil {
 		t.Errorf("Failed to SelectTyped: %s", err.Error())
@@ -738,19 +834,21 @@ func TestClientNamed(t *testing.T) {
 	}
 
 	// Upsert
-	resp, err = conn.Upsert(spaceName, []interface{}{uint(1003), 1}, []interface{}{[]interface{}{"+", 1, 1}})
-	if err != nil {
-		t.Errorf("Failed to Upsert (insert): %s", err.Error())
-	}
-	if resp == nil {
-		t.Errorf("Response is nil after Upsert (insert)")
-	}
-	resp, err = conn.Upsert(spaceName, []interface{}{uint(1003), 1}, []interface{}{[]interface{}{"+", 1, 1}})
-	if err != nil {
-		t.Errorf("Failed to Upsert (update): %s", err.Error())
-	}
-	if resp == nil {
-		t.Errorf("Response is nil after Upsert (update)")
+	if strings.Compare(conn.Greeting.Version, "Tarantool 1.6.7") >= 0 {
+		resp, err = conn.Upsert(spaceName, []interface{}{uint(1003), 1}, []interface{}{[]interface{}{"+", 1, 1}})
+		if err != nil {
+			t.Errorf("Failed to Upsert (insert): %s", err.Error())
+		}
+		if resp == nil {
+			t.Errorf("Response is nil after Upsert (insert)")
+		}
+		resp, err = conn.Upsert(spaceName, []interface{}{uint(1003), 1}, []interface{}{[]interface{}{"+", 1, 1}})
+		if err != nil {
+			t.Errorf("Failed to Upsert (update): %s", err.Error())
+		}
+		if resp == nil {
+			t.Errorf("Response is nil after Upsert (update)")
+		}
 	}
 
 	// Select
@@ -769,12 +867,51 @@ func TestClientNamed(t *testing.T) {
 	}
 
 	// Select Typed
-	var tpl []tuple
+	var tpl []Tuple
 	err = conn.SelectTyped(spaceName, indexName, 0, 1, IterEq, []interface{}{uint(1010)}, &tpl)
 	if err != nil {
 		t.Errorf("Failed to SelectTyped: %s", err.Error())
 	}
 	if len(tpl) != 1 {
 		t.Errorf("Result len of SelectTyped != 1")
+	}
+}
+
+func TestComplexStructs(t *testing.T) {
+	var err error
+	var conn *Connection
+
+	conn, err = Connect(server, opts)
+	if err != nil {
+		t.Errorf("Failed to connect: %s", err.Error())
+		return
+	}
+	if conn == nil {
+		t.Errorf("conn is nil after Connect")
+		return
+	}
+
+	tuple := Tuple2{777, "orig", []Member{{"lol", "", 1}, {"wut", "", 3}}}
+	_, err = conn.Replace(spaceNo, tuple)
+	if err != nil {
+		t.Errorf("Failed to insert: %s", err.Error())
+		return
+	}
+
+	var tuples []Tuple2
+	err = conn.SelectTyped(spaceNo, indexNo, 0, 1, IterEq, []interface{}{777}, &tuples)
+	if err != nil {
+		t.Errorf("Failed to selectTyped: %s", err.Error())
+		return
+	}
+
+	if len(tuples) != 1 {
+		t.Errorf("Failed to selectTyped: unexpected array length %d", len(tuples))
+		return
+	}
+
+	if tuple.Cid != tuples[0].Cid || len(tuple.Members) != len(tuples[0].Members) || tuple.Members[1].Name != tuples[0].Members[1].Name {
+		t.Errorf("Failed to selectTyped: incorrect data")
+		return
 	}
 }

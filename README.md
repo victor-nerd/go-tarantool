@@ -142,6 +142,131 @@ func main() {
     fmt.Printf("SpaceField %s %s\n", spaceField1.Name, spaceField1.Type)
 ```
 
+## Custom (un)packing and typed selects
+It's possible to specify custom pack/unpack functions for your types.
+It will allow you to store complex structures inside a tuple and may speed up you requests.
+```go
+import (
+	"github.com/tarantool/go-tarantool"
+	"gopkg.in/vmihailenco/msgpack.v2"
+)
+
+type Member struct {
+	Name  string
+	Nonce string
+	Val   uint
+}
+
+type Tuple struct {
+	Cid     uint
+	Orig    string
+	Members []Member
+}
+
+func init() {
+	msgpack.Register(reflect.TypeOf(Tuple{}), encodeTuple, decodeTuple)
+	msgpack.Register(reflect.TypeOf(Member{}), encodeMember, decodeMember)
+}
+
+func encodeMember(e *msgpack.Encoder, v reflect.Value) error {
+	m := v.Interface().(Member)
+	if err := e.EncodeSliceLen(2); err != nil {
+		return err
+	}
+	if err := e.EncodeString(m.Name); err != nil {
+		return err
+	}
+	if err := e.EncodeUint(m.Val); err != nil {
+		return err
+	}
+	return nil
+}
+
+func decodeMember(d *msgpack.Decoder, v reflect.Value) error {
+	var err error
+	var l int
+	m := v.Addr().Interface().(*Member)
+	if l, err = d.DecodeSliceLen(); err != nil {
+		return err
+	}
+	if l != 2 {
+		return fmt.Errorf("array len doesn't match: %d", l)
+	}
+	if m.Name, err = d.DecodeString(); err != nil {
+		return err
+	}
+	if m.Val, err = d.DecodeUint(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func encodeTuple(e *msgpack.Encoder, v reflect.Value) error {
+	c := v.Interface().(Tuple)
+	if err := e.EncodeSliceLen(3); err != nil {
+		return err
+	}
+	if err := e.EncodeUint(c.Cid); err != nil {
+		return err
+	}
+	if err := e.EncodeString(c.Orig); err != nil {
+		return err
+	}
+	if err := e.EncodeSliceLen(len(c.Members)); err != nil {
+		return err
+	}
+	for _, m := range c.Members {
+		e.Encode(m)
+	}
+	return nil
+}
+
+func decodeTuple(d *msgpack.Decoder, v reflect.Value) error {
+	var err error
+	var l int
+	c := v.Addr().Interface().(*Tuple)
+	if l, err = d.DecodeSliceLen(); err != nil {
+		return err
+	}
+	if l != 3 {
+		return fmt.Errorf("array len doesn't match: %d", l)
+	}
+	if c.Cid, err = d.DecodeUint(); err != nil {
+		return err
+	}
+	if c.Orig, err = d.DecodeString(); err != nil {
+		return err
+	}
+	if l, err = d.DecodeSliceLen(); err != nil {
+		return err
+	}
+	c.Members = make([]Member, l)
+	for i := 0; i < l; i++ {
+		d.Decode(&c.Members[i])
+	}
+	return nil
+}
+
+func main() { 
+	// establish connection ...
+
+	tuple := Tuple{777, "orig", []Member{{"lol", "", 1}, {"wut", "", 3}}}
+	_, err = conn.Replace(spaceNo, tuple)  // NOTE: insert structure itself
+	if err != nil {
+		t.Errorf("Failed to insert: %s", err.Error())
+		return
+	}
+
+	var tuples []Tuple
+	err = conn.SelectTyped(spaceNo, indexNo, 0, 1, IterEq, []interface{}{777}, &tuples)
+	if err != nil {
+		t.Errorf("Failed to selectTyped: %s", err.Error())
+		return
+	}
+}
+
+```
+
 
 ## Options
 * Timeout - timeout for any particular request. If Timeout is zero request any request may block infinitely

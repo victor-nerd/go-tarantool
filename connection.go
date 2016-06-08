@@ -29,7 +29,7 @@ type Connection struct {
 }
 
 type Greeting struct {
-	version string
+	Version string
 	auth    string
 }
 
@@ -114,7 +114,7 @@ func (conn *Connection) dial() (err error) {
 		c.Close()
 		return
 	}
-	conn.Greeting.version = bytes.NewBuffer(greeting[:64]).String()
+	conn.Greeting.Version = bytes.NewBuffer(greeting[:64]).String()
 	conn.Greeting.auth = bytes.NewBuffer(greeting[64:108]).String()
 
 	// Auth

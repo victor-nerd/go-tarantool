@@ -49,7 +49,7 @@ func (req *Request) fillIterator(offset, limit, iterator uint32) {
 	req.body[KeyLimit] = limit
 }
 
-func (req *Request) fillInsert(spaceNo uint32, tuple []interface{}) {
+func (req *Request) fillInsert(spaceNo uint32, tuple interface{}) {
 	req.body[KeySpaceNo] = spaceNo
 	req.body[KeyTuple] = tuple
 }
@@ -77,7 +77,7 @@ func (conn *Connection) SelectTyped(space, index interface{}, offset, limit, ite
 	return request.performTyped(result)
 }
 
-func (conn *Connection) Insert(space interface{}, tuple []interface{}) (resp *Response, err error) {
+func (conn *Connection) Insert(space interface{}, tuple interface{}) (resp *Response, err error) {
 	request := conn.NewRequest(InsertRequest)
 	spaceNo, _, err := conn.Schema.resolveSpaceIndex(space, nil)
 	if err != nil {
@@ -88,7 +88,7 @@ func (conn *Connection) Insert(space interface{}, tuple []interface{}) (resp *Re
 	return
 }
 
-func (conn *Connection) Replace(space interface{}, tuple []interface{}) (resp *Response, err error) {
+func (conn *Connection) Replace(space interface{}, tuple interface{}) (resp *Response, err error) {
 	request := conn.NewRequest(ReplaceRequest)
 	spaceNo, _, err := conn.Schema.resolveSpaceIndex(space, nil)
 	if err != nil {
@@ -135,18 +135,18 @@ func (conn *Connection) Upsert(space interface{}, tuple, ops []interface{}) (res
 	return
 }
 
-func (conn *Connection) Call(functionName string, tuple []interface{}) (resp *Response, err error) {
+func (conn *Connection) Call(functionName string, args []interface{}) (resp *Response, err error) {
 	request := conn.NewRequest(CallRequest)
 	request.body[KeyFunctionName] = functionName
-	request.body[KeyTuple] = tuple
+	request.body[KeyTuple] = args
 	resp, err = request.perform()
 	return
 }
 
-func (conn *Connection) Eval(expr string, tuple []interface{}) (resp *Response, err error) {
+func (conn *Connection) Eval(expr string, args []interface{}) (resp *Response, err error) {
 	request := conn.NewRequest(EvalRequest)
 	request.body[KeyExpression] = expr
-	request.body[KeyTuple] = tuple
+	request.body[KeyTuple] = args
 	resp, err = request.perform()
 	return
 }
@@ -162,7 +162,7 @@ func (conn *Connection) SelectAsync(space, index interface{}, offset, limit, ite
 	return request.future()
 }
 
-func (conn *Connection) InsertAsync(space interface{}, tuple []interface{}) *Future {
+func (conn *Connection) InsertAsync(space interface{}, tuple interface{}) *Future {
 	request := conn.NewRequest(InsertRequest)
 	spaceNo, _, err := conn.Schema.resolveSpaceIndex(space, nil)
 	if err != nil {
@@ -172,7 +172,7 @@ func (conn *Connection) InsertAsync(space interface{}, tuple []interface{}) *Fut
 	return request.future()
 }
 
-func (conn *Connection) ReplaceAsync(space interface{}, tuple []interface{}) *Future {
+func (conn *Connection) ReplaceAsync(space interface{}, tuple interface{}) *Future {
 	request := conn.NewRequest(ReplaceRequest)
 	spaceNo, _, err := conn.Schema.resolveSpaceIndex(space, nil)
 	if err != nil {
@@ -203,7 +203,7 @@ func (conn *Connection) UpdateAsync(space, index interface{}, key, ops []interfa
 	return request.future()
 }
 
-func (conn *Connection) UpsertAsync(space interface{}, tuple, ops []interface{}) *Future {
+func (conn *Connection) UpsertAsync(space interface{}, tuple interface{}, ops []interface{}) *Future {
 	request := conn.NewRequest(UpsertRequest)
 	spaceNo, _, err := conn.Schema.resolveSpaceIndex(space, nil)
 	if err != nil {
@@ -215,17 +215,17 @@ func (conn *Connection) UpsertAsync(space interface{}, tuple, ops []interface{})
 	return request.future()
 }
 
-func (conn *Connection) CallAsync(functionName string, tuple []interface{}) *Future {
+func (conn *Connection) CallAsync(functionName string, args []interface{}) *Future {
 	request := conn.NewRequest(CallRequest)
 	request.body[KeyFunctionName] = functionName
-	request.body[KeyTuple] = tuple
+	request.body[KeyTuple] = args
 	return request.future()
 }
 
-func (conn *Connection) EvalAsync(expr string, tuple []interface{}) *Future {
+func (conn *Connection) EvalAsync(expr string, args []interface{}) *Future {
 	request := conn.NewRequest(EvalRequest)
 	request.body[KeyExpression] = expr
-	request.body[KeyTuple] = tuple
+	request.body[KeyTuple] = args
 	return request.future()
 }
 
@@ -257,12 +257,12 @@ func (req *Request) pack() (packet []byte, err error) {
 	if err != nil {
 		return
 	}
-	for k,v := range(req.body) {
+	for k, v := range req.body {
 		err = enc.EncodeInt64(int64(k))
 		if err != nil {
 			return
 		}
-		switch vv:=v.(type) {
+		switch vv := v.(type) {
 		case uint32:
 			err = enc.EncodeUint64(uint64(vv))
 		default:
