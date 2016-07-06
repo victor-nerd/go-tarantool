@@ -100,6 +100,7 @@ func (resp *Response) decodeBodyTyped(res interface{}) (err error) {
 			}
 		}
 		if resp.Code != OkCode {
+			resp.Code &^= ErrorCodeBit
 			err = Error{resp.Code, resp.Error}
 		}
 	}

@@ -42,6 +42,7 @@ const (
 	IterBitsAllNotSet = uint32(9) // all bits are not set
 
 	OkCode            = uint32(0)
+	ErrorCodeBit      = 0x8000
 	PacketLengthBytes = 5
 )
 
