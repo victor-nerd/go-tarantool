@@ -127,8 +127,8 @@ func main() {
     fmt.Printf("Space %d %d\n", space1.FieldsCount, space1.Temporary)
 
     // access index information by name or id
-    index1 := schema.Indexes["some_index"]
-    index2 := schema.IndexesById[2] // it's a map
+    index1 := space1.Indexes["some_index"]
+    index2 := space1.IndexesById[2] // it's a map
     fmt.Printf("Index %d %s\n", index1.Id, index1.Name)
 
     // access index fields information by index
