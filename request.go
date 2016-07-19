@@ -143,6 +143,13 @@ func (conn *Connection) Call(functionName string, args []interface{}) (resp *Res
 	return
 }
 
+func (conn *Connection) CallTyped(functionName string, args []interface{}, result interface{}) (err error) {
+	request := conn.NewRequest(CallRequest)
+	request.body[KeyFunctionName] = functionName
+	request.body[KeyTuple] = args
+	return request.performTyped(result)
+}
+
 func (conn *Connection) Eval(expr string, args []interface{}) (resp *Response, err error) {
 	request := conn.NewRequest(EvalRequest)
 	request.body[KeyExpression] = expr
