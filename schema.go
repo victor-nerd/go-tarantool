@@ -196,6 +196,10 @@ func (schema *Schema) resolveSpaceIndex(s interface{}, i interface{}) (spaceNo, 
 		spaceNo = uint32(s)
 	case int8:
 		spaceNo = uint32(s)
+	case Space:
+		spaceNo = s.Id
+	case *Space:
+		spaceNo = s.Id
 	default:
 		panic("unexpected type of space param")
 	}
@@ -234,6 +238,10 @@ func (schema *Schema) resolveSpaceIndex(s interface{}, i interface{}) (spaceNo, 
 			indexNo = uint32(i)
 		case int8:
 			indexNo = uint32(i)
+		case Index:
+			indexNo = i.Id
+		case *Index:
+			indexNo = i.Id
 		default:
 			panic("unexpected type of index param")
 		}
