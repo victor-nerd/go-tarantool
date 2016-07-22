@@ -122,6 +122,17 @@ func (conn *Connection) Update(space, index interface{}, key, ops []interface{})
 	return
 }
 
+func (conn *Connection) UpdateTyped(space, index interface{}, key, ops []interface{}, result interface{}) (err error) {
+	request := conn.NewRequest(UpdateRequest)
+	spaceNo, indexNo, err := conn.Schema.resolveSpaceIndex(space, index)
+	if err != nil {
+		return
+	}
+	request.fillSearch(spaceNo, indexNo, key)
+	request.body[KeyTuple] = ops
+	return request.performTyped(result)
+}
+
 func (conn *Connection) Upsert(space interface{}, tuple, ops []interface{}) (resp *Response, err error) {
 	request := conn.NewRequest(UpsertRequest)
 	spaceNo, _, err := conn.Schema.resolveSpaceIndex(space, nil)
