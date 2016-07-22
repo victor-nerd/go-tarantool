@@ -179,7 +179,6 @@ func BenchmarkClientSerial(b *testing.B) {
 		if err != nil {
 			b.Errorf("No connection available")
 		}
-
 	}
 }
 

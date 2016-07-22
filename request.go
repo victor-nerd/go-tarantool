@@ -1,7 +1,6 @@
 package tarantool
 
 import (
-	"errors"
 	"fmt"
 	"gopkg.in/vmihailenco/msgpack.v2"
 	"time"
@@ -287,8 +286,12 @@ func (req *Request) future() (fut *Future) {
 	fut = &Future{req: req}
 
 	// check connection ready to process packets
+	if closed := req.conn.closed; closed {
+		fut.err = ClientError{ErrConnectionClosed, "using closed connection"}
+		return
+	}
 	if c := req.conn.c; c == nil {
-		fut.err = errors.New("client connection is not ready")
+		fut.err = ClientError{ErrConnectionNotReady, "client connection is not ready"}
 		return
 	}
 
@@ -300,7 +303,7 @@ func (req *Request) future() (fut *Future) {
 	req.conn.mutex.Lock()
 	if req.conn.closed {
 		req.conn.mutex.Unlock()
-		fut.err = errors.New("using closed connection")
+		fut.err = ClientError{ErrConnectionClosed, "using closed connection"}
 		return
 	}
 	req.conn.requests[req.requestId] = fut
