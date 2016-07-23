@@ -142,7 +142,7 @@ func main() {
     fmt.Printf("SpaceField %s %s\n", spaceField1.Name, spaceField1.Type)
 ```
 
-## Custom (un)packing and typed selects
+## Custom (un)packing and typed selects and function calls
 It's possible to specify custom pack/unpack functions for your types.
 It will allow you to store complex structures inside a tuple and may speed up you requests.
 ```go
@@ -260,7 +260,15 @@ func main() {
 	var tuples []Tuple
 	err = conn.SelectTyped(spaceNo, indexNo, 0, 1, IterEq, []interface{}{777}, &tuples)
 	if err != nil {
-		t.Errorf("Failed to selectTyped: %s", err.Error())
+		t.Errorf("Failed to SelectTyped: %s", err.Error())
+		return
+	}
+
+	// call function 'func_name' returning a table of custom tuples
+	var tuples2 []Tuple
+	err = client.CallTyped("func_name", []interface{}{1, 2, 3}, &tuples)
+	if err != nil {
+		t.Errorf("Failed to CallTyped: %s", err.Error())
 		return
 	}
 }
