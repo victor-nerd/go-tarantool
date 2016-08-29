@@ -250,12 +250,10 @@ func (conn *Connection) writer() {
 		select {
 		case packet = <-conn.packets:
 		default:
-			if w = conn.w; w != nil {
-				runtime.Gosched()
-				if len(conn.packets) == 0 {
-					if err := w.Flush(); err != nil {
-						conn.closeConnection(err)
-					}
+			runtime.Gosched()
+			if w = conn.w; len(conn.packets) == 0 && w != nil {
+				if err := w.Flush(); err != nil {
+					conn.closeConnection(err)
 				}
 			}
 			select {
