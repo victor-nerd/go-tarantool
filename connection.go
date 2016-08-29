@@ -247,12 +247,18 @@ func (conn *Connection) writer() {
 	var err error
 	for !conn.closed {
 		var packet []byte
+		if w == nil {
+			conn.mutex.Lock()
+			w = conn.w
+			conn.mutex.Unlock()
+		}
 		select {
 		case packet = <-conn.packets:
 		default:
 			runtime.Gosched()
-			if w = conn.w; len(conn.packets) == 0 && w != nil {
+			if len(conn.packets) == 0 && w != nil {
 				if err := w.Flush(); err != nil {
+					w = nil
 					conn.closeConnection(err)
 				}
 			}
@@ -265,13 +271,14 @@ func (conn *Connection) writer() {
 		if packet == nil {
 			return
 		}
-		if w = conn.w; w == nil {
+		if w == nil {
 			if _, w, err = conn.createConnection(); err != nil {
 				conn.closeConnectionForever(err)
 				return
 			}
 		}
 		if err := write(w, packet); err != nil {
+			w = nil
 			conn.closeConnection(err)
 			continue
 		}
@@ -282,7 +289,12 @@ func (conn *Connection) reader() {
 	var r *bufio.Reader
 	var err error
 	for !conn.closed {
-		if r = conn.r; r == nil {
+		if r == nil {
+			conn.mutex.Lock()
+			r = conn.r
+			conn.mutex.Unlock()
+		}
+		if r == nil {
 			if r, _, err = conn.createConnection(); err != nil {
 				conn.closeConnectionForever(err)
 				return
@@ -290,12 +302,14 @@ func (conn *Connection) reader() {
 		}
 		resp_bytes, err := read(r)
 		if err != nil {
+			r = nil
 			conn.closeConnection(err)
 			continue
 		}
 		resp := Response{buf: smallBuf{b: resp_bytes}}
 		err = resp.decodeHeader()
 		if err != nil {
+			r = nil
 			conn.closeConnection(err)
 			continue
 		}
