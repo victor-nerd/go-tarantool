@@ -69,7 +69,7 @@ func Connect(addr string, opts Opts) (conn *Connection, err error) {
 
 	// TODO: reload schema after reconnect
 	if err = conn.loadSchema(); err != nil {
-		conn.closeConnection(err)
+		conn.closeConnection(err, nil, nil)
 		return nil, err
 	}
 
@@ -218,11 +218,17 @@ func (conn *Connection) createConnection() (r *bufio.Reader, w *bufio.Writer, er
 	return
 }
 
-func (conn *Connection) closeConnection(neterr error) (err error) {
+func (conn *Connection) closeConnection(neterr error, w *bufio.Writer, r *bufio.Reader) (ww *bufio.Writer, rr *bufio.Reader, err error) {
 	conn.mutex.Lock()
 	defer conn.mutex.Unlock()
 	if conn.c == nil {
 		return
+	}
+	if w != nil && w != conn.w {
+		return conn.w, nil, nil
+	}
+	if r != nil && r != conn.r {
+		return nil, conn.r, nil
 	}
 	err = conn.c.Close()
 	conn.c = nil
@@ -239,7 +245,8 @@ func (conn *Connection) closeConnection(neterr error) (err error) {
 func (conn *Connection) closeConnectionForever(err error) error {
 	conn.closed = true
 	close(conn.control)
-	return conn.closeConnection(err)
+	_, _, err = conn.closeConnection(err, nil, nil)
+	return err
 }
 
 func (conn *Connection) writer() {
@@ -258,8 +265,7 @@ func (conn *Connection) writer() {
 			runtime.Gosched()
 			if len(conn.packets) == 0 && w != nil {
 				if err := w.Flush(); err != nil {
-					w = nil
-					conn.closeConnection(err)
+					w, _, _ = conn.closeConnection(err, w, nil)
 				}
 			}
 			select {
@@ -278,8 +284,7 @@ func (conn *Connection) writer() {
 			}
 		}
 		if err := write(w, packet); err != nil {
-			w = nil
-			conn.closeConnection(err)
+			w, _, _ = conn.closeConnection(err, w, nil)
 			continue
 		}
 	}
@@ -302,15 +307,13 @@ func (conn *Connection) reader() {
 		}
 		resp_bytes, err := read(r)
 		if err != nil {
-			r = nil
-			conn.closeConnection(err)
+			_, r, _ = conn.closeConnection(err, nil, r)
 			continue
 		}
 		resp := Response{buf: smallBuf{b: resp_bytes}}
 		err = resp.decodeHeader()
 		if err != nil {
-			r = nil
-			conn.closeConnection(err)
+			_, r, _ = conn.closeConnection(err, nil, r)
 			continue
 		}
 		conn.mutex.Lock()
