@@ -218,17 +218,17 @@ func (conn *Connection) createConnection() (r *bufio.Reader, w *bufio.Writer, er
 	return
 }
 
-func (conn *Connection) closeConnection(neterr error, w *bufio.Writer, r *bufio.Reader) (ww *bufio.Writer, rr *bufio.Reader, err error) {
+func (conn *Connection) closeConnection(neterr error, r *bufio.Reader, w *bufio.Writer) (rr *bufio.Reader, ww *bufio.Writer, err error) {
 	conn.mutex.Lock()
 	defer conn.mutex.Unlock()
 	if conn.c == nil {
 		return
 	}
 	if w != nil && w != conn.w {
-		return conn.w, nil, nil
+		return nil, conn.w, nil
 	}
 	if r != nil && r != conn.r {
-		return nil, conn.r, nil
+		return conn.r, nil, nil
 	}
 	err = conn.c.Close()
 	conn.c = nil
@@ -260,7 +260,7 @@ func (conn *Connection) writer() {
 			runtime.Gosched()
 			if len(conn.packets) == 0 && w != nil {
 				if err := w.Flush(); err != nil {
-					w, _, _ = conn.closeConnection(err, w, nil)
+					_, w, _ = conn.closeConnection(err, nil, w)
 				}
 			}
 			select {
@@ -279,7 +279,7 @@ func (conn *Connection) writer() {
 			}
 		}
 		if err := write(w, packet); err != nil {
-			w, _, _ = conn.closeConnection(err, w, nil)
+			_, w, _ = conn.closeConnection(err, nil, w)
 			continue
 		}
 	}
@@ -297,13 +297,13 @@ func (conn *Connection) reader() {
 		}
 		resp_bytes, err := read(r)
 		if err != nil {
-			_, r, _ = conn.closeConnection(err, nil, r)
+			r, _, _ = conn.closeConnection(err, r, nil)
 			continue
 		}
 		resp := Response{buf: smallBuf{b: resp_bytes}}
 		err = resp.decodeHeader()
 		if err != nil {
-			_, r, _ = conn.closeConnection(err, nil, r)
+			r, _, _ = conn.closeConnection(err, r, nil)
 			continue
 		}
 		conn.mutex.Lock()
