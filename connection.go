@@ -254,11 +254,6 @@ func (conn *Connection) writer() {
 	var err error
 	for !conn.closed {
 		var packet []byte
-		if w == nil {
-			conn.mutex.Lock()
-			w = conn.w
-			conn.mutex.Unlock()
-		}
 		select {
 		case packet = <-conn.packets:
 		default:
@@ -294,11 +289,6 @@ func (conn *Connection) reader() {
 	var r *bufio.Reader
 	var err error
 	for !conn.closed {
-		if r == nil {
-			conn.mutex.Lock()
-			r = conn.r
-			conn.mutex.Unlock()
-		}
 		if r == nil {
 			if r, _, err = conn.createConnection(); err != nil {
 				conn.closeConnectionForever(err)
