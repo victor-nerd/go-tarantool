@@ -161,11 +161,11 @@ func (conn *Connection) writeAuthRequest(w *bufio.Writer, scramble []byte) (err 
 }
 
 func (conn *Connection) readAuthResponse(r io.Reader) (err error) {
-	resp_bytes, err := read(r)
+	respBytes, err := read(r)
 	if err != nil {
 		return errors.New("auth: read error " + err.Error())
 	}
-	resp := Response{buf: smallBuf{b: resp_bytes}}
+	resp := Response{buf: smallBuf{b: respBytes}}
 	err = resp.decodeHeader()
 	if err != nil {
 		return errors.New("auth: decode response header error " + err.Error())
@@ -202,12 +202,11 @@ func (conn *Connection) createConnection() (r *bufio.Reader, w *bufio.Writer, er
 					// mark connection as closed to avoid reopening by another goroutine
 					conn.closed = true
 					return
-				} else {
-					log.Printf("tarantool: reconnect (%d/%d) to %s failed: %s\n", reconnects, conn.opts.MaxReconnects, conn.addr, err.Error())
-					reconnects += 1
-					time.Sleep(conn.opts.Reconnect)
-					continue
 				}
+				log.Printf("tarantool: reconnect (%d/%d) to %s failed: %s\n", reconnects, conn.opts.MaxReconnects, conn.addr, err.Error())
+				reconnects++
+				time.Sleep(conn.opts.Reconnect)
+				continue
 			} else {
 				return
 			}
@@ -295,12 +294,12 @@ func (conn *Connection) reader() {
 				return
 			}
 		}
-		resp_bytes, err := read(r)
+		respBytes, err := read(r)
 		if err != nil {
 			r, _, _ = conn.closeConnection(err, r, nil)
 			continue
 		}
-		resp := Response{buf: smallBuf{b: resp_bytes}}
+		resp := Response{buf: smallBuf{b: respBytes}}
 		err = resp.decodeHeader()
 		if err != nil {
 			r, _, _ = conn.closeConnection(err, r, nil)

@@ -664,7 +664,7 @@ func TestSchema(t *testing.T) {
 		t.Errorf("space.Fields len is incorrect")
 	}
 
-	var field1, field2, field5, field1_, field5_ *Field
+	var field1, field2, field5, field1n, field5n *Field
 	if field1, ok = space.FieldsById[1]; !ok {
 		t.Errorf("field id = 1 was not found")
 	}
@@ -675,13 +675,13 @@ func TestSchema(t *testing.T) {
 		t.Errorf("field id = 5 was not found")
 	}
 
-	if field1_, ok = space.Fields["name1"]; !ok {
+	if field1n, ok = space.Fields["name1"]; !ok {
 		t.Errorf("field name = name1 was not found")
 	}
-	if field5_, ok = space.Fields["name5"]; !ok {
+	if field5n, ok = space.Fields["name5"]; !ok {
 		t.Errorf("field name = name5 was not found")
 	}
-	if field1 != field1_ || field5 != field5_ {
+	if field1 != field1n || field5 != field5n {
 		t.Errorf("field with id = 1 and field with name 'name1' are different")
 	}
 	if field1.Name != "name1" {
@@ -710,20 +710,20 @@ func TestSchema(t *testing.T) {
 		t.Errorf("space.Indexes len is incorrect")
 	}
 
-	var index0, index3, index0_, index3_ *Index
+	var index0, index3, index0n, index3n *Index
 	if index0, ok = space.IndexesById[0]; !ok {
 		t.Errorf("index id = 0 was not found")
 	}
 	if index3, ok = space.IndexesById[3]; !ok {
 		t.Errorf("index id = 3 was not found")
 	}
-	if index0_, ok = space.Indexes["primary"]; !ok {
+	if index0n, ok = space.Indexes["primary"]; !ok {
 		t.Errorf("index name = primary was not found")
 	}
-	if index3_, ok = space.Indexes["secondary"]; !ok {
+	if index3n, ok = space.Indexes["secondary"]; !ok {
 		t.Errorf("index name = secondary was not found")
 	}
-	if index0 != index0_ || index3 != index3_ {
+	if index0 != index0n || index3 != index3n {
 		t.Errorf("index with id = 3 and index with name 'secondary' are different")
 	}
 	if index3.Id != 3 {

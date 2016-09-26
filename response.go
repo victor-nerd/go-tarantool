@@ -111,9 +111,8 @@ func (resp *Response) decodeBodyTyped(res interface{}) (err error) {
 func (resp *Response) String() (str string) {
 	if resp.Code == OkCode {
 		return fmt.Sprintf("<%d OK %v>", resp.RequestId, resp.Data)
-	} else {
-		return fmt.Sprintf("<%d ERR 0x%x %s>", resp.RequestId, resp.Code, resp.Error)
 	}
+	return fmt.Sprintf("<%d ERR 0x%x %s>", resp.RequestId, resp.Code, resp.Error)
 }
 
 func (resp *Response) Tuples() (res [][]interface{}) {

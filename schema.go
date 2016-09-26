@@ -99,8 +99,8 @@ func (conn *Connection) loadSchema() (err error) {
 				if name, ok := f["name"]; ok && name != nil {
 					field.Name = name.(string)
 				}
-				if type_, ok := f["type"]; ok && type_ != nil {
-					field.Type = type_.(string)
+				if type1, ok := f["type"]; ok && type1 != nil {
+					field.Type = type1.(string)
 				}
 				space.FieldsById[field.Id] = field
 				if field.Name != "" {
@@ -139,7 +139,7 @@ func (conn *Connection) loadSchema() (err error) {
 		switch row[5].(type) {
 		case uint64:
 			cnt := int(row[5].(uint64))
-			for i := 0; i < cnt; i += 1 {
+			for i := 0; i < cnt; i++ {
 				field := new(IndexField)
 				field.Id = uint32(row[6+i*2].(uint64))
 				field.Type = row[7+i*2].(string)
