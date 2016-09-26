@@ -66,6 +66,7 @@ func (resp *Response) decodeBody() (err error) {
 			resp.Error = body[KeyError].(string)
 		}
 		if resp.Code != OkCode {
+			resp.Code &^= ErrorCodeBit
 			err = Error{resp.Code, resp.Error}
 		}
 	}
