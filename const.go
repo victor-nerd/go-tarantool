@@ -119,7 +119,7 @@ const (
 	ErrLocalServerIsNotActive        = 61  // Local server is not active
 	ErrUnknownServer                 = 62  // Server %s is not registered with the cluster
 	ErrClusterIdMismatch             = 63  // Cluster id of the replica %s doesn't match cluster id of the master %s
-	ErrInvalidUuid                   = 64  // Invalid UUID: %s
+	ErrInvalidUUID                   = 64  // Invalid UUID: %s
 	ErrClusterIdIsRo                 = 65  // Can't reset cluster id: it is already assigned
 	ErrReserved66                    = 66  // Reserved66
 	ErrServerIdIsReserved            = 67  // Can't initialize server id with a reserved value %u
