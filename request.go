@@ -379,8 +379,16 @@ func (req *Request) future() (fut *Future) {
 	req.conn.mutex.Unlock()
 
 	fut.ready = make(chan struct{})
-	// TODO: packets may lock
-	req.conn.packets <- (packet)
+	select {
+	case req.conn.packets <- (packet):
+	default:
+		// if connection is totally closed, then req.conn.packets will be full
+		select {
+		case req.conn.packets <- (packet):
+		case <-fut.ready:
+			return
+		}
+	}
 
 	if req.conn.opts.Timeout > 0 {
 		fut.timeout = time.NewTimer(req.conn.opts.Timeout)
