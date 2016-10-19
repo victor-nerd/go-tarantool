@@ -369,6 +369,7 @@ func (req *Request) future() (fut *Future) {
 		return
 	}
 
+	fut.ready = make(chan struct{})
 	req.conn.mutex.Lock()
 	if req.conn.closed {
 		req.conn.mutex.Unlock()
@@ -378,7 +379,6 @@ func (req *Request) future() (fut *Future) {
 	req.conn.requests[req.requestId] = fut
 	req.conn.mutex.Unlock()
 
-	fut.ready = make(chan struct{})
 	select {
 	case req.conn.packets <- (packet):
 	default:
