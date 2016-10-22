@@ -753,8 +753,8 @@ func TestSchema(t *testing.T) {
 	if ifield1.Id != 1 || ifield2.Id != 2 {
 		t.Errorf("index field has incorrect Id")
 	}
-	if ifield1.Type != "num" || ifield2.Type != "STR" {
-		t.Errorf("index field has incorrect Type[")
+	if (ifield1.Type != "num" && ifield1.Type != "unsigned") || (ifield2.Type != "STR" && ifield2.Type != "string") {
+		t.Errorf("index field has incorrect Type '%s'", ifield2.Type)
 	}
 
 	var rSpaceNo, rIndexNo uint32

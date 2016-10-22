@@ -4,6 +4,7 @@ box.cfg{
     snap_dir='snap',
 }
 
+box.once("init", function()
 local s = box.schema.space.create('test', {
     id = 512,
     if_not_exists = true,
@@ -38,6 +39,7 @@ st:create_index('secondary', {
 st:truncate()
 
 --box.schema.user.grant('guest', 'read,write,execute', 'universe')
+box.schema.func.create('box.info')
 
 -- auth testing: access control
 if not box.schema.user.exists('test') then
@@ -46,6 +48,7 @@ if not box.schema.user.exists('test') then
     box.schema.user.grant('test', 'read,write', 'space', 'test')
     box.schema.user.grant('test', 'read,write', 'space', 'schematest')
 end
+end)
 
 local console = require 'console'
 console.listen '0.0.0.0:33015'
