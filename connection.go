@@ -18,7 +18,8 @@ type Connection struct {
 	c         *net.TCPConn
 	r         *bufio.Reader
 	w         *bufio.Writer
-	mutex     *sync.Mutex
+	mutex     sync.Mutex
+	reqmut    sync.Mutex
 	Schema    *Schema
 	requestId uint32
 	Greeting  *Greeting
@@ -46,7 +47,6 @@ func Connect(addr string, opts Opts) (conn *Connection, err error) {
 
 	conn = &Connection{
 		addr:      addr,
-		mutex:     &sync.Mutex{},
 		requestId: 0,
 		Greeting:  &Greeting{},
 		requests:  make(map[uint32]*Future),
@@ -233,6 +233,8 @@ func (conn *Connection) closeConnection(neterr error, r *bufio.Reader, w *bufio.
 	conn.c = nil
 	conn.r = nil
 	conn.w = nil
+	conn.reqmut.Lock()
+	defer conn.reqmut.Unlock()
 	for rid, fut := range conn.requests {
 		fut.err = neterr
 		close(fut.ready)
@@ -242,7 +244,9 @@ func (conn *Connection) closeConnection(neterr error, r *bufio.Reader, w *bufio.
 }
 
 func (conn *Connection) closeConnectionForever(err error) error {
+	conn.reqmut.Lock()
 	conn.closed = true
+	conn.reqmut.Unlock()
 	close(conn.control)
 	_, _, err = conn.closeConnection(err, nil, nil)
 	return err
@@ -305,14 +309,14 @@ func (conn *Connection) reader() {
 			r, _, _ = conn.closeConnection(err, r, nil)
 			continue
 		}
-		conn.mutex.Lock()
+		conn.reqmut.Lock()
 		if fut, ok := conn.requests[resp.RequestId]; ok {
 			delete(conn.requests, resp.RequestId)
 			fut.resp = resp
 			close(fut.ready)
-			conn.mutex.Unlock()
+			conn.reqmut.Unlock()
 		} else {
-			conn.mutex.Unlock()
+			conn.reqmut.Unlock()
 			log.Printf("tarantool: unexpected requestId (%d) in response", uint(resp.RequestId))
 		}
 	}

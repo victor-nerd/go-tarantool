@@ -370,30 +370,53 @@ func (req *Request) future() (fut *Future) {
 	}
 
 	fut.ready = make(chan struct{})
-	req.conn.mutex.Lock()
+	req.conn.reqmut.Lock()
 	if req.conn.closed {
-		req.conn.mutex.Unlock()
+		req.conn.reqmut.Unlock()
 		fut.err = ClientError{ErrConnectionClosed, "using closed connection"}
 		return
 	}
 	req.conn.requests[req.requestId] = fut
-	req.conn.mutex.Unlock()
+	req.conn.reqmut.Unlock()
 
+	var sent bool
 	select {
 	case req.conn.packets <- (packet):
+		sent = true
 	default:
+	}
+
+	var timeout <-chan time.Time
+	if req.conn.opts.Timeout > 0 {
+		fut.timeout = time.NewTimer(req.conn.opts.Timeout)
+		timeout = fut.timeout.C
+	}
+
+	if !sent {
 		// if connection is totally closed, then req.conn.packets will be full
+		// if connection is busy, we can reach timeout
 		select {
 		case req.conn.packets <- (packet):
 		case <-fut.ready:
-			return
+		case <-timeout:
+			fut.timeout.C = closedtimechan
+			fut.timeouted()
 		}
 	}
 
-	if req.conn.opts.Timeout > 0 {
-		fut.timeout = time.NewTimer(req.conn.opts.Timeout)
-	}
 	return
+}
+
+func (fut *Future) timeouted() {
+	conn := fut.req.conn
+	requestId := fut.req.requestId
+	conn.reqmut.Lock()
+	if _, ok := conn.requests[requestId]; ok {
+		delete(conn.requests, requestId)
+		close(fut.ready)
+		fut.err = fmt.Errorf("client timeout for request %d", requestId)
+	}
+	conn.reqmut.Unlock()
 }
 
 func badfuture(err error) *Future {
@@ -404,8 +427,6 @@ func (fut *Future) wait() {
 	if fut.ready == nil {
 		return
 	}
-	conn := fut.req.conn
-	requestId := fut.req.requestId
 	select {
 	case <-fut.ready:
 	default:
@@ -413,13 +434,7 @@ func (fut *Future) wait() {
 			select {
 			case <-fut.ready:
 			case <-timeout.C:
-				conn.mutex.Lock()
-				if _, ok := conn.requests[requestId]; ok {
-					delete(conn.requests, requestId)
-					close(fut.ready)
-					fut.err = fmt.Errorf("client timeout for request %d", requestId)
-				}
-				conn.mutex.Unlock()
+				fut.timeouted()
 			}
 		} else {
 			<-fut.ready
@@ -447,4 +462,10 @@ func (fut *Future) GetTyped(result interface{}) error {
 	}
 	fut.err = fut.resp.decodeBodyTyped(result)
 	return fut.err
+}
+
+var closedtimechan = make(chan time.Time)
+
+func init() {
+	close(closedtimechan)
 }
