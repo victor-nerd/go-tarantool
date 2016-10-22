@@ -268,7 +268,7 @@ func BenchmarkClientFutureParallel(b *testing.B) {
 			exit = j < N
 			for j > 0 {
 				j--
-				_, err = fs[j].Get()
+				_, err := fs[j].Get()
 				if err != nil {
 					b.Error(err)
 					break
@@ -304,7 +304,7 @@ func BenchmarkClientFutureParallelTyped(b *testing.B) {
 			for j > 0 {
 				var r []Tuple
 				j--
-				err = fs[j].GetTyped(&r)
+				err := fs[j].GetTyped(&r)
 				if err != nil {
 					b.Error(err)
 					break
@@ -332,7 +332,7 @@ func BenchmarkClientParrallel(b *testing.B) {
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			_, err = conn.Select(spaceNo, indexNo, 0, 1, IterEq, []interface{}{uint(1111)})
+			_, err := conn.Select(spaceNo, indexNo, 0, 1, IterEq, []interface{}{uint(1111)})
 			if err != nil {
 				b.Errorf("No connection available")
 				break
