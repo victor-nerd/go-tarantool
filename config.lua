@@ -10,7 +10,6 @@ local s = box.schema.space.create('test', {
     if_not_exists = true,
 })
 s:create_index('primary', {type = 'hash', parts = {1, 'NUM'}, if_not_exists = true})
-s:truncate()
 
 local st = box.schema.space.create('schematest', {
     id = 514,
@@ -50,6 +49,7 @@ if not box.schema.user.exists('test') then
 end
 end)
 
+box.space.test:truncate()
 local console = require 'console'
 console.listen '0.0.0.0:33015'
 
