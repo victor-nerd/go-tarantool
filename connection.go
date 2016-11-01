@@ -29,7 +29,6 @@ type Connection struct {
 	Greeting  *Greeting
 	shard      [shards]struct {
 		sync.Mutex
-		timeout time.Duration
 		requests []*Future
 		first *Future
 		last  **Future
@@ -65,7 +64,6 @@ func Connect(addr string, opts Opts) (conn *Connection, err error) {
 		opts:      opts,
 	}
 	for i := range conn.shard {
-		conn.shard[i].timeout = time.Now().Sub(epoch) + conn.opts.Timeout
 		conn.shard[i].last = &conn.shard[i].first
 		conn.shard[i].requests = make([]*Future, requestsMap)
 	}
@@ -367,7 +365,7 @@ func (conn *Connection) putFuture(fut *Future) {
 	fut.next = conn.shard[shard].requests[pos]
 	conn.shard[shard].requests[pos] = fut
 	if conn.opts.Timeout > 0 {
-		fut.timeout = conn.shard[shard].timeout
+		fut.timeout = time.Now().Sub(epoch) + conn.opts.Timeout
 		fut.time.prev = conn.shard[shard].last
 		*conn.shard[shard].last = fut
 		conn.shard[shard].last = &fut.time.next
@@ -418,7 +416,11 @@ func (conn *Connection) fetchFutureImp(reqid uint32) *Future {
 }
 
 func (conn *Connection) timeouts() {
-	t := time.NewTicker(1*time.Millisecond)
+	timeout := conn.opts.Timeout
+	if timeout == 0 {
+		timeout = time.Second
+	}
+	t := time.NewTimer(timeout)
 	for {
 		var nowepoch time.Duration
 		select {
@@ -428,17 +430,21 @@ func (conn *Connection) timeouts() {
 		case now := <-t.C:
 			nowepoch = now.Sub(epoch)
 		}
+		minNext := nowepoch + timeout
 		for i := range conn.shard {
 			conn.shard[i].Lock()
-			conn.shard[i].timeout = nowepoch + conn.opts.Timeout
 			for conn.shard[i].first != nil && conn.shard[i].first.timeout < nowepoch {
 				fut := conn.shard[i].first
 				conn.shard[i].Unlock()
 				fut.timeouted()
 				conn.shard[i].Lock()
 			}
+			if conn.shard[i].first != nil && conn.shard[i].first.timeout < minNext {
+				minNext = conn.shard[i].first.timeout
+			}
 			conn.shard[i].Unlock()
 		}
+		t.Reset(minNext - time.Now().Sub(epoch))
 	}
 }
 
