@@ -354,13 +354,16 @@ func BenchmarkClientParallelMassive(b *testing.B) {
 		b.Errorf("No connection available")
 	}
 
+	limit := make(chan struct{}, 128*1024)
 	var wg sync.WaitGroup
 	for i:=0; i<b.N; i++ {
 		wg.Add(1)
+		limit <- struct{}{}
 		go func() {
 			var r []Tuple
 			err = conn.SelectTyped(spaceNo, indexNo, 0, 1, IterEq, []interface{}{uint(1111)}, &r)
 			//_, err = conn.Select(spaceNo, indexNo, 0, 1, IterEq, []interface{}{uint(1111)})
+			<- limit
 			wg.Done()
 			if err != nil {
 				b.Errorf("No connection available")
