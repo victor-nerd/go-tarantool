@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"errors"
+	"gopkg.in/vmihailenco/msgpack.v2"
 	"io"
 	"log"
 	"net"
@@ -145,9 +146,12 @@ func (conn *Connection) dial() (err error) {
 
 func (conn *Connection) writeAuthRequest(w *bufio.Writer, scramble []byte) (err error) {
 	request := conn.NewRequest(AuthRequest)
-	request.body[KeyUserName] = conn.opts.User
-	request.body[KeyTuple] = []interface{}{string("chap-sha1"), string(scramble)}
-	packet, err := request.pack()
+	packet, err := request.pack(func(enc *msgpack.Encoder) error {
+		return enc.Encode(map[uint32]interface{} {
+			KeyUserName: conn.opts.User,
+			KeyTuple: []interface{}{string("chap-sha1"), string(scramble)},
+		})
+	})
 	if err != nil {
 		return errors.New("auth: pack error " + err.Error())
 	}
