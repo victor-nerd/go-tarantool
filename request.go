@@ -280,14 +280,14 @@ func (fut *Future) send(body func (*msgpack.Encoder)error) *Future {
 	}
 
 	fut.ready = make(chan struct{})
-	fut.conn.reqmut.Lock()
+	fut.conn.shard[fut.requestId&(shards-1)].Lock()
 	if fut.conn.closed {
-		fut.conn.reqmut.Unlock()
+		fut.conn.shard[fut.requestId&shards].Unlock()
 		fut.err = ClientError{ErrConnectionClosed, "using closed connection"}
 		return fut
 	}
 	fut.conn.putFuture(fut)
-	fut.conn.reqmut.Unlock()
+	fut.conn.shard[fut.requestId&(shards-1)].Unlock()
 
 	select {
 	case fut.conn.packets <- (packet):
@@ -305,7 +305,7 @@ func (fut *Future) send(body func (*msgpack.Encoder)error) *Future {
 
 func (fut *Future) timeouted() {
 	conn := fut.conn
-	conn.reqmut.Lock()
+	conn.shard[fut.requestId&(shards-1)].Lock()
 	if f := conn.fetchFuture(fut.requestId); f != nil {
 		if f != fut {
 			panic("future doesn't match")
@@ -313,7 +313,7 @@ func (fut *Future) timeouted() {
 		fut.err = fmt.Errorf("client timeout for request %d", fut.requestId)
 		close(fut.ready)
 	}
-	conn.reqmut.Unlock()
+	conn.shard[fut.requestId&(shards-1)].Unlock()
 }
 
 func badfuture(err error) *Future {

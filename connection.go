@@ -14,7 +14,8 @@ import (
 	"time"
 )
 
-const requestsMap = 32*1024
+const shards = 16
+const requestsMap = 2*1024
 var epoch = time.Now()
 
 type Connection struct {
@@ -23,15 +24,16 @@ type Connection struct {
 	r         *bufio.Reader
 	w         *bufio.Writer
 	mutex     sync.Mutex
-	reqmut    sync.Mutex
 	Schema    *Schema
 	requestId uint32
 	Greeting  *Greeting
-	requests  []*Future
-	time      struct {
+	shard      [shards]struct {
+		sync.Mutex
 		timeout time.Duration
+		requests []*Future
 		first *Future
 		last  **Future
+		_pad  [128]byte
 	}
 	packets   chan []byte
 	control   chan struct{}
@@ -58,13 +60,15 @@ func Connect(addr string, opts Opts) (conn *Connection, err error) {
 		addr:      addr,
 		requestId: 0,
 		Greeting:  &Greeting{},
-		requests:  make([]*Future, requestsMap),
-		packets:   make(chan []byte, 2048),
+		packets:   make(chan []byte, 16*1024),
 		control:   make(chan struct{}),
 		opts:      opts,
 	}
-	conn.time.timeout = time.Now().Sub(epoch) + conn.opts.Timeout
-	conn.time.last = &conn.time.first
+	for i := range conn.shard {
+		conn.shard[i].timeout = time.Now().Sub(epoch) + conn.opts.Timeout
+		conn.shard[i].last = &conn.shard[i].first
+		conn.shard[i].requests = make([]*Future, requestsMap)
+	}
 
 	var reconnect time.Duration
 	// disable reconnecting for first connect
@@ -248,23 +252,38 @@ func (conn *Connection) closeConnection(neterr error, r *bufio.Reader, w *bufio.
 	conn.c = nil
 	conn.r = nil
 	conn.w = nil
-	conn.reqmut.Lock()
-	defer conn.reqmut.Unlock()
-	for pos, fut := range conn.requests {
-		conn.requests[pos] = nil
-		for fut != nil {
-			fut.err = neterr
-			close(fut.ready)
-			fut, fut.next = fut.next, nil
+	conn.lockShards()
+	defer conn.unlockShards()
+	for i := range conn.shard {
+		requests := conn.shard[i].requests
+		for pos, fut := range requests {
+			requests[pos] = nil
+			for fut != nil {
+				fut.err = neterr
+				close(fut.ready)
+				fut, fut.next = fut.next, nil
+			}
 		}
 	}
 	return
 }
 
+func (conn *Connection) lockShards() {
+	for i := range conn.shard {
+		conn.shard[i].Lock()
+	}
+}
+
+func (conn *Connection) unlockShards() {
+	for i := range conn.shard {
+		conn.shard[i].Unlock()
+	}
+}
+
 func (conn *Connection) closeConnectionForever(err error) error {
-	conn.reqmut.Lock()
+	conn.lockShards()
 	conn.closed = true
-	conn.reqmut.Unlock()
+	conn.unlockShards()
 	close(conn.control)
 	_, _, err = conn.closeConnection(err, nil, nil)
 	return err
@@ -327,56 +346,60 @@ func (conn *Connection) reader() {
 			r, _, _ = conn.closeConnection(err, r, nil)
 			continue
 		}
-		conn.reqmut.Lock()
+		shard := resp.RequestId&(shards-1)
+		conn.shard[shard].Lock()
 		if fut := conn.fetchFuture(resp.RequestId); fut != nil {
 			fut.resp = resp
 			close(fut.ready)
-			conn.reqmut.Unlock()
+			conn.shard[shard].Unlock()
 		} else {
-			conn.reqmut.Unlock()
+			conn.shard[shard].Unlock()
 			log.Printf("tarantool: unexpected requestId (%d) in response", uint(resp.RequestId))
 		}
 	}
 }
 
 func (conn *Connection) putFuture(fut *Future) {
-	pos := fut.requestId & (requestsMap-1)
-	fut.next = conn.requests[pos]
-	conn.requests[pos] = fut
+	shard := fut.requestId & (shards-1)
+	pos := (fut.requestId/shards) & (requestsMap-1)
+	fut.next = conn.shard[shard].requests[pos]
+	conn.shard[shard].requests[pos] = fut
 	if conn.opts.Timeout > 0 {
-		fut.timeout = conn.time.timeout
-		fut.time.prev = conn.time.last
-		*conn.time.last = fut
-		conn.time.last = &fut.time.next
+		fut.timeout = conn.shard[shard].timeout
+		fut.time.prev = conn.shard[shard].last
+		*conn.shard[shard].last = fut
+		conn.shard[shard].last = &fut.time.next
 	}
 }
 
-func (conn *Connection) unlinkFutureTime(fut *Future) {
+func (conn *Connection) unlinkFutureTime(shard uint32, fut *Future) {
 	if fut.time.prev != nil {
+		i := fut.requestId&(shards-1)
 		*fut.time.prev = fut.time.next
 		if fut.time.next != nil {
 			fut.time.next.time.prev = fut.time.prev
 		} else {
-			conn.time.last = fut.time.prev
+			conn.shard[i].last = fut.time.prev
 		}
 	}
 }
 
 func (conn *Connection) fetchFuture(reqid uint32) *Future {
-	pos := reqid & (requestsMap-1)
-	fut := conn.requests[pos]
+	shard := reqid & (shards-1)
+	pos := (reqid/shards) & (requestsMap-1)
+	fut := conn.shard[shard].requests[pos]
 	if fut == nil {
 		return nil
 	}
 	if fut.requestId == reqid {
-		conn.requests[pos] = fut.next
-		conn.unlinkFutureTime(fut)
+		conn.shard[shard].requests[pos] = fut.next
+		conn.unlinkFutureTime(shard, fut)
 		return fut
 	}
 	for fut.next != nil {
 		if fut.next.requestId == reqid {
 			fut, fut.next = fut.next, fut.next.next
-			conn.unlinkFutureTime(fut)
+			conn.unlinkFutureTime(shard, fut)
 			return fut
 		}
 		fut = fut.next
@@ -395,15 +418,17 @@ func (conn *Connection) timeouts() {
 		case now := <-t.C:
 			nowepoch = now.Sub(epoch)
 		}
-		conn.reqmut.Lock()
-		conn.time.timeout = nowepoch + conn.opts.Timeout
-		for conn.time.first != nil && conn.time.first.timeout < nowepoch {
-			fut := conn.time.first
-			conn.reqmut.Unlock()
-			fut.timeouted()
-			conn.reqmut.Lock()
+		for i := range conn.shard {
+			conn.shard[i].Lock()
+			conn.shard[i].timeout = nowepoch + conn.opts.Timeout
+			for conn.shard[i].first != nil && conn.shard[i].first.timeout < nowepoch {
+				fut := conn.shard[i].first
+				conn.shard[i].Unlock()
+				fut.timeouted()
+				conn.shard[i].Lock()
+			}
+			conn.shard[i].Unlock()
 		}
-		conn.reqmut.Unlock()
 	}
 }
 
