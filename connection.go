@@ -50,8 +50,8 @@ func Connect(addr string, opts Opts) (conn *Connection, err error) {
 		addr:      addr,
 		requestId: 0,
 		Greeting:  &Greeting{},
-		requests:  make(map[uint32]*Future),
-		packets:   make(chan []byte, 64),
+		requests:  make(map[uint32]*Future, 2048),
+		packets:   make(chan []byte, 2048),
 		control:   make(chan struct{}),
 		opts:      opts,
 	}
@@ -108,7 +108,7 @@ func (conn *Connection) dial() (err error) {
 	c := connection.(*net.TCPConn)
 	c.SetNoDelay(true)
 	r := bufio.NewReaderSize(c, 128*1024)
-	w := bufio.NewWriter(c)
+	w := bufio.NewWriterSize(c, 128*1024)
 	greeting := make([]byte, 128)
 	_, err = io.ReadFull(r, greeting)
 	if err != nil {
