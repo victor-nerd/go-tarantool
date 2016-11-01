@@ -282,6 +282,7 @@ func (fut *Future) send(body func (*msgpack.Encoder)error) *Future {
 	fut.ready = make(chan struct{})
 	fut.conn.putFuture(fut)
 	if fut.err != nil {
+		fut.conn.fetchFuture(fut.requestId)
 		return fut
 	}
 
