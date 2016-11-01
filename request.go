@@ -6,34 +6,31 @@ import (
 	"time"
 )
 
-type Request struct {
-	conn        *Connection
+type Future struct {
+	conn    *Connection
 	requestId   uint32
 	requestCode int32
-}
-
-type Future struct {
-	req     *Request
 	resp    Response
 	err     error
 	ready   chan struct{}
 	timeout *time.Timer
+	next    *Future
 }
 
-func (conn *Connection) NewRequest(requestCode int32) (req *Request) {
-	req = &Request{}
-	req.conn = conn
-	req.requestId = conn.nextRequestId()
-	req.requestCode = requestCode
+func (conn *Connection) newFuture(requestCode int32) (fut *Future) {
+	fut = &Future{}
+	fut.conn = conn
+	fut.requestId = conn.nextRequestId()
+	fut.requestCode = requestCode
 	return
 }
 
 func (conn *Connection) Ping() (resp *Response, err error) {
-	request := conn.NewRequest(PingRequest)
-	return request.future(func(enc *msgpack.Encoder)error{enc.EncodeMapLen(0);return nil}).Get()
+	future := conn.newFuture(PingRequest)
+	return future.send(func(enc *msgpack.Encoder)error{enc.EncodeMapLen(0);return nil}).Get()
 }
 
-func (req *Request) fillSearch(enc *msgpack.Encoder, spaceNo, indexNo uint32, key []interface{}) error {
+func (req *Future) fillSearch(enc *msgpack.Encoder, spaceNo, indexNo uint32, key []interface{}) error {
 	enc.EncodeUint64(KeySpaceNo)
 	enc.EncodeUint64(uint64(spaceNo))
 	enc.EncodeUint64(KeyIndexNo)
@@ -42,7 +39,7 @@ func (req *Request) fillSearch(enc *msgpack.Encoder, spaceNo, indexNo uint32, ke
 	return enc.Encode(key)
 }
 
-func (req *Request) fillIterator(enc *msgpack.Encoder, offset, limit, iterator uint32) {
+func (req *Future) fillIterator(enc *msgpack.Encoder, offset, limit, iterator uint32) {
 	enc.EncodeUint64(KeyIterator)
 	enc.EncodeUint64(uint64(iterator))
 	enc.EncodeUint64(KeyOffset)
@@ -51,7 +48,7 @@ func (req *Request) fillIterator(enc *msgpack.Encoder, offset, limit, iterator u
 	enc.EncodeUint64(uint64(limit))
 }
 
-func (req *Request) fillInsert(enc *msgpack.Encoder, spaceNo uint32, tuple interface{}) error {
+func (req *Future) fillInsert(enc *msgpack.Encoder, spaceNo uint32, tuple interface{}) error {
 	enc.EncodeUint64(KeySpaceNo)
 	enc.EncodeUint64(uint64(spaceNo))
 	enc.EncodeUint64(KeyTuple)
@@ -125,63 +122,63 @@ func (conn *Connection) EvalTyped(expr string, args []interface{}, result interf
 
 // Async methods
 func (conn *Connection) SelectAsync(space, index interface{}, offset, limit, iterator uint32, key []interface{}) *Future {
-	request := conn.NewRequest(SelectRequest)
+	future := conn.newFuture(SelectRequest)
 	spaceNo, indexNo, err := conn.Schema.resolveSpaceIndex(space, index)
 	if err != nil {
 		return badfuture(err)
 	}
-	return request.future(func (enc *msgpack.Encoder) error {
+	return future.send(func (enc *msgpack.Encoder) error {
 		enc.EncodeMapLen(6)
-		request.fillIterator(enc, offset, limit, iterator)
-		return request.fillSearch(enc, spaceNo, indexNo, key)
+		future.fillIterator(enc, offset, limit, iterator)
+		return future.fillSearch(enc, spaceNo, indexNo, key)
 	})
 }
 
 func (conn *Connection) InsertAsync(space interface{}, tuple interface{}) *Future {
-	request := conn.NewRequest(InsertRequest)
+	future := conn.newFuture(InsertRequest)
 	spaceNo, _, err := conn.Schema.resolveSpaceIndex(space, nil)
 	if err != nil {
 		return badfuture(err)
 	}
-	return request.future(func (enc *msgpack.Encoder) error {
+	return future.send(func (enc *msgpack.Encoder) error {
 		enc.EncodeMapLen(2)
-		return request.fillInsert(enc, spaceNo, tuple)
+		return future.fillInsert(enc, spaceNo, tuple)
 	})
 }
 
 func (conn *Connection) ReplaceAsync(space interface{}, tuple interface{}) *Future {
-	request := conn.NewRequest(ReplaceRequest)
+	future := conn.newFuture(ReplaceRequest)
 	spaceNo, _, err := conn.Schema.resolveSpaceIndex(space, nil)
 	if err != nil {
 		return badfuture(err)
 	}
-	return request.future(func (enc *msgpack.Encoder) error {
+	return future.send(func (enc *msgpack.Encoder) error {
 		enc.EncodeMapLen(2)
-		return request.fillInsert(enc, spaceNo, tuple)
+		return future.fillInsert(enc, spaceNo, tuple)
 	})
 }
 
 func (conn *Connection) DeleteAsync(space, index interface{}, key []interface{}) *Future {
-	request := conn.NewRequest(DeleteRequest)
+	future := conn.newFuture(DeleteRequest)
 	spaceNo, indexNo, err := conn.Schema.resolveSpaceIndex(space, index)
 	if err != nil {
 		return badfuture(err)
 	}
-	return request.future(func (enc *msgpack.Encoder) error {
+	return future.send(func (enc *msgpack.Encoder) error {
 		enc.EncodeMapLen(3)
-		return request.fillSearch(enc, spaceNo, indexNo, key)
+		return future.fillSearch(enc, spaceNo, indexNo, key)
 	})
 }
 
 func (conn *Connection) UpdateAsync(space, index interface{}, key, ops []interface{}) *Future {
-	request := conn.NewRequest(UpdateRequest)
+	future := conn.newFuture(UpdateRequest)
 	spaceNo, indexNo, err := conn.Schema.resolveSpaceIndex(space, index)
 	if err != nil {
 		return badfuture(err)
 	}
-	return request.future(func (enc *msgpack.Encoder) error {
+	return future.send(func (enc *msgpack.Encoder) error {
 		enc.EncodeMapLen(4)
-		if err := request.fillSearch(enc, spaceNo, indexNo, key); err != nil {
+		if err := future.fillSearch(enc, spaceNo, indexNo, key); err != nil {
 			return err
 		}
 		enc.EncodeUint64(KeyTuple)
@@ -190,12 +187,12 @@ func (conn *Connection) UpdateAsync(space, index interface{}, key, ops []interfa
 }
 
 func (conn *Connection) UpsertAsync(space interface{}, tuple interface{}, ops []interface{}) *Future {
-	request := conn.NewRequest(UpsertRequest)
+	future := conn.newFuture(UpsertRequest)
 	spaceNo, _, err := conn.Schema.resolveSpaceIndex(space, nil)
 	if err != nil {
 		return badfuture(err)
 	}
-	return request.future(func (enc *msgpack.Encoder) error {
+	return future.send(func (enc *msgpack.Encoder) error {
 		enc.EncodeMapLen(3)
 		enc.EncodeUint64(KeySpaceNo)
 		enc.EncodeUint64(uint64(spaceNo))
@@ -209,8 +206,8 @@ func (conn *Connection) UpsertAsync(space interface{}, tuple interface{}, ops []
 }
 
 func (conn *Connection) CallAsync(functionName string, args []interface{}) *Future {
-	request := conn.NewRequest(CallRequest)
-	return request.future(func (enc *msgpack.Encoder) error {
+	future := conn.newFuture(CallRequest)
+	return future.send(func (enc *msgpack.Encoder) error {
 		enc.EncodeMapLen(2)
 		enc.EncodeUint64(KeyFunctionName)
 		enc.EncodeString(functionName)
@@ -220,8 +217,8 @@ func (conn *Connection) CallAsync(functionName string, args []interface{}) *Futu
 }
 
 func (conn *Connection) EvalAsync(expr string, args []interface{}) *Future {
-	request := conn.NewRequest(EvalRequest)
-	return request.future(func (enc *msgpack.Encoder) error {
+	future := conn.newFuture(EvalRequest)
+	return future.send(func (enc *msgpack.Encoder) error {
 		enc.EncodeMapLen(2)
 		enc.EncodeUint64(KeyExpression)
 		enc.EncodeString(expr)
@@ -234,13 +231,13 @@ func (conn *Connection) EvalAsync(expr string, args []interface{}) *Future {
 // private
 //
 
-func (req *Request) pack(body func (*msgpack.Encoder)error) (packet []byte, err error) {
-	rid := req.requestId
+func (fut *Future) pack(body func (*msgpack.Encoder)error) (packet []byte, err error) {
+	rid := fut.requestId
 	h := make(smallWBuf, 0, 48)
 	h = append(h, smallWBuf{
 		0xce, 0, 0, 0, 0, // length
 		0x82,                           // 2 element map
-		KeyCode, byte(req.requestCode), // request code
+		KeyCode, byte(fut.requestCode), // request code
 		KeySync, 0xce,
 		byte(rid >> 24), byte(rid >> 16),
 		byte(rid >> 8), byte(rid),
@@ -261,60 +258,60 @@ func (req *Request) pack(body func (*msgpack.Encoder)error) (packet []byte, err 
 	return
 }
 
-func (req *Request) future(body func (*msgpack.Encoder)error) (fut *Future) {
-	fut = &Future{req: req}
+func (fut *Future) send(body func (*msgpack.Encoder)error) *Future {
 
 	// check connection ready to process packets
-	if closed := req.conn.closed; closed {
+	if closed := fut.conn.closed; closed {
 		fut.err = ClientError{ErrConnectionClosed, "using closed connection"}
-		return
+		return fut
 	}
-	if c := req.conn.c; c == nil {
+	if c := fut.conn.c; c == nil {
 		fut.err = ClientError{ErrConnectionNotReady, "client connection is not ready"}
-		return
+		return fut
 	}
 
 	var packet []byte
-	if packet, fut.err = req.pack(body); fut.err != nil {
-		return
+	if packet, fut.err = fut.pack(body); fut.err != nil {
+		return fut
 	}
 
 	fut.ready = make(chan struct{})
-	req.conn.reqmut.Lock()
-	if req.conn.closed {
-		req.conn.reqmut.Unlock()
+	fut.conn.reqmut.Lock()
+	if fut.conn.closed {
+		fut.conn.reqmut.Unlock()
 		fut.err = ClientError{ErrConnectionClosed, "using closed connection"}
-		return
+		return fut
 	}
-	req.conn.requests[req.requestId] = fut
-	req.conn.reqmut.Unlock()
+	fut.conn.putFuture(fut)
+	fut.conn.reqmut.Unlock()
 
-	if req.conn.opts.Timeout > 0 {
-		fut.timeout = time.AfterFunc(req.conn.opts.Timeout, fut.timeouted)
+	if fut.conn.opts.Timeout > 0 {
+		fut.timeout = time.AfterFunc(fut.conn.opts.Timeout, fut.timeouted)
 	}
 
 	select {
-	case req.conn.packets <- (packet):
+	case fut.conn.packets <- (packet):
 	default:
-		// if connection is totally closed, then req.conn.packets will be full
+		// if connection is totally closed, then fut.conn.packets will be full
 		// if connection is busy, we can reach timeout
 		select {
-		case req.conn.packets <- (packet):
+		case fut.conn.packets <- (packet):
 		case <-fut.ready:
 		}
 	}
 
-	return
+	return fut
 }
 
 func (fut *Future) timeouted() {
-	conn := fut.req.conn
-	requestId := fut.req.requestId
+	conn := fut.conn
 	conn.reqmut.Lock()
-	if _, ok := conn.requests[requestId]; ok {
-		delete(conn.requests, requestId)
+	if f := conn.fetchFuture(fut.requestId); f != nil {
+		if f != fut {
+			panic("future doesn't match")
+		}
 		close(fut.ready)
-		fut.err = fmt.Errorf("client timeout for request %d", requestId)
+		fut.err = fmt.Errorf("client timeout for request %d", fut.requestId)
 	}
 	conn.reqmut.Unlock()
 }

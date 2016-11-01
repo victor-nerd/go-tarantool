@@ -14,6 +14,8 @@ import (
 	"time"
 )
 
+const requestsMap = 32*1024
+
 type Connection struct {
 	addr      string
 	c         *net.TCPConn
@@ -24,7 +26,7 @@ type Connection struct {
 	Schema    *Schema
 	requestId uint32
 	Greeting  *Greeting
-	requests  map[uint32]*Future
+	requests  []*Future
 	packets   chan []byte
 	control   chan struct{}
 	opts      Opts
@@ -50,7 +52,7 @@ func Connect(addr string, opts Opts) (conn *Connection, err error) {
 		addr:      addr,
 		requestId: 0,
 		Greeting:  &Greeting{},
-		requests:  make(map[uint32]*Future, 2048),
+		requests:  make([]*Future, requestsMap),
 		packets:   make(chan []byte, 2048),
 		control:   make(chan struct{}),
 		opts:      opts,
@@ -145,7 +147,7 @@ func (conn *Connection) dial() (err error) {
 }
 
 func (conn *Connection) writeAuthRequest(w *bufio.Writer, scramble []byte) (err error) {
-	request := conn.NewRequest(AuthRequest)
+	request := conn.newFuture(AuthRequest)
 	packet, err := request.pack(func(enc *msgpack.Encoder) error {
 		return enc.Encode(map[uint32]interface{} {
 			KeyUserName: conn.opts.User,
@@ -239,10 +241,13 @@ func (conn *Connection) closeConnection(neterr error, r *bufio.Reader, w *bufio.
 	conn.w = nil
 	conn.reqmut.Lock()
 	defer conn.reqmut.Unlock()
-	for rid, fut := range conn.requests {
-		fut.err = neterr
-		close(fut.ready)
-		delete(conn.requests, rid)
+	for pos, fut := range conn.requests {
+		conn.requests[pos] = nil
+		for fut != nil {
+			fut.err = neterr
+			close(fut.ready)
+			fut, fut.next = fut.next, nil
+		}
 	}
 	return
 }
@@ -314,8 +319,7 @@ func (conn *Connection) reader() {
 			continue
 		}
 		conn.reqmut.Lock()
-		if fut, ok := conn.requests[resp.RequestId]; ok {
-			delete(conn.requests, resp.RequestId)
+		if fut := conn.fetchFuture(resp.RequestId); fut != nil {
 			fut.resp = resp
 			close(fut.ready)
 			conn.reqmut.Unlock()
@@ -324,6 +328,32 @@ func (conn *Connection) reader() {
 			log.Printf("tarantool: unexpected requestId (%d) in response", uint(resp.RequestId))
 		}
 	}
+}
+
+func (conn *Connection) putFuture(fut *Future) {
+	pos := fut.requestId & (requestsMap-1)
+	fut.next = conn.requests[pos]
+	conn.requests[pos] = fut
+}
+
+func (conn *Connection) fetchFuture(reqid uint32) *Future {
+	pos := reqid & (requestsMap-1)
+	fut := conn.requests[pos]
+	if fut == nil {
+		return nil
+	}
+	if fut.requestId == reqid {
+		conn.requests[pos] = fut.next
+		return fut
+	}
+	for fut.next != nil {
+		if fut.next.requestId == reqid {
+			fut, fut.next = fut.next, fut.next.next
+			return fut
+		}
+		fut = fut.next
+	}
+	return nil
 }
 
 func write(w io.Writer, data []byte) (err error) {
