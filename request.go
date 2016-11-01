@@ -310,8 +310,8 @@ func (fut *Future) timeouted() {
 		if f != fut {
 			panic("future doesn't match")
 		}
-		close(fut.ready)
 		fut.err = fmt.Errorf("client timeout for request %d", fut.requestId)
+		close(fut.ready)
 	}
 	conn.reqmut.Unlock()
 }
