@@ -15,6 +15,7 @@ import (
 )
 
 const requestsMap = 32*1024
+var epoch = time.Now()
 
 type Connection struct {
 	addr      string
@@ -27,6 +28,11 @@ type Connection struct {
 	requestId uint32
 	Greeting  *Greeting
 	requests  []*Future
+	time      struct {
+		timeout time.Duration
+		first *Future
+		last  **Future
+	}
 	packets   chan []byte
 	control   chan struct{}
 	opts      Opts
@@ -57,6 +63,8 @@ func Connect(addr string, opts Opts) (conn *Connection, err error) {
 		control:   make(chan struct{}),
 		opts:      opts,
 	}
+	conn.time.timeout = time.Now().Sub(epoch) + conn.opts.Timeout
+	conn.time.last = &conn.time.first
 
 	var reconnect time.Duration
 	// disable reconnecting for first connect
@@ -69,6 +77,7 @@ func Connect(addr string, opts Opts) (conn *Connection, err error) {
 
 	go conn.writer()
 	go conn.reader()
+	go conn.timeouts()
 
 	// TODO: reload schema after reconnect
 	if err = conn.loadSchema(); err != nil {
@@ -334,6 +343,23 @@ func (conn *Connection) putFuture(fut *Future) {
 	pos := fut.requestId & (requestsMap-1)
 	fut.next = conn.requests[pos]
 	conn.requests[pos] = fut
+	if conn.opts.Timeout > 0 {
+		fut.timeout = conn.time.timeout
+		fut.time.prev = conn.time.last
+		*conn.time.last = fut
+		conn.time.last = &fut.time.next
+	}
+}
+
+func (conn *Connection) unlinkFutureTime(fut *Future) {
+	if fut.time.prev != nil {
+		*fut.time.prev = fut.time.next
+		if fut.time.next != nil {
+			fut.time.next.time.prev = fut.time.prev
+		} else {
+			conn.time.last = fut.time.prev
+		}
+	}
 }
 
 func (conn *Connection) fetchFuture(reqid uint32) *Future {
@@ -344,16 +370,41 @@ func (conn *Connection) fetchFuture(reqid uint32) *Future {
 	}
 	if fut.requestId == reqid {
 		conn.requests[pos] = fut.next
+		conn.unlinkFutureTime(fut)
 		return fut
 	}
 	for fut.next != nil {
 		if fut.next.requestId == reqid {
 			fut, fut.next = fut.next, fut.next.next
+			conn.unlinkFutureTime(fut)
 			return fut
 		}
 		fut = fut.next
 	}
 	return nil
+}
+
+func (conn *Connection) timeouts() {
+	t := time.NewTicker(1*time.Millisecond)
+	for {
+		var nowepoch time.Duration
+		select {
+		case <-conn.control:
+			t.Stop()
+			return
+		case now := <-t.C:
+			nowepoch = now.Sub(epoch)
+		}
+		conn.reqmut.Lock()
+		conn.time.timeout = nowepoch + conn.opts.Timeout
+		for conn.time.first != nil && conn.time.first.timeout < nowepoch {
+			fut := conn.time.first
+			conn.reqmut.Unlock()
+			fut.timeouted()
+			conn.reqmut.Lock()
+		}
+		conn.reqmut.Unlock()
+	}
 }
 
 func write(w io.Writer, data []byte) (err error) {

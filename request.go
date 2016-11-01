@@ -13,8 +13,12 @@ type Future struct {
 	resp    Response
 	err     error
 	ready   chan struct{}
-	timeout *time.Timer
+	timeout time.Duration
 	next    *Future
+	time    struct {
+		next *Future
+		prev **Future
+	}
 }
 
 func (conn *Connection) newFuture(requestCode int32) (fut *Future) {
@@ -285,10 +289,6 @@ func (fut *Future) send(body func (*msgpack.Encoder)error) *Future {
 	fut.conn.putFuture(fut)
 	fut.conn.reqmut.Unlock()
 
-	if fut.conn.opts.Timeout > 0 {
-		fut.timeout = time.AfterFunc(fut.conn.opts.Timeout, fut.timeouted)
-	}
-
 	select {
 	case fut.conn.packets <- (packet):
 	default:
@@ -325,10 +325,6 @@ func (fut *Future) wait() {
 		return
 	}
 	<-fut.ready
-	if fut.timeout != nil {
-		fut.timeout.Stop()
-		fut.timeout = nil
-	}
 }
 
 func (fut *Future) Get() (*Response, error) {
