@@ -346,14 +346,10 @@ func (conn *Connection) reader() {
 			r, _, _ = conn.closeConnection(err, r, nil)
 			continue
 		}
-		shard := resp.RequestId&(shards-1)
-		conn.shard[shard].Lock()
 		if fut := conn.fetchFuture(resp.RequestId); fut != nil {
 			fut.resp = resp
 			close(fut.ready)
-			conn.shard[shard].Unlock()
 		} else {
-			conn.shard[shard].Unlock()
 			log.Printf("tarantool: unexpected requestId (%d) in response", uint(resp.RequestId))
 		}
 	}
@@ -361,6 +357,12 @@ func (conn *Connection) reader() {
 
 func (conn *Connection) putFuture(fut *Future) {
 	shard := fut.requestId & (shards-1)
+	conn.shard[shard].Lock()
+	if conn.closed {
+		conn.shard[shard].Unlock()
+		fut.err = ClientError{ErrConnectionClosed, "using closed connection"}
+		return
+	}
 	pos := (fut.requestId/shards) & (requestsMap-1)
 	fut.next = conn.shard[shard].requests[pos]
 	conn.shard[shard].requests[pos] = fut
@@ -370,6 +372,7 @@ func (conn *Connection) putFuture(fut *Future) {
 		*conn.shard[shard].last = fut
 		conn.shard[shard].last = &fut.time.next
 	}
+	conn.shard[shard].Unlock()
 }
 
 func (conn *Connection) unlinkFutureTime(shard uint32, fut *Future) {
@@ -384,7 +387,14 @@ func (conn *Connection) unlinkFutureTime(shard uint32, fut *Future) {
 	}
 }
 
-func (conn *Connection) fetchFuture(reqid uint32) *Future {
+func (conn *Connection) fetchFuture(reqid uint32) (fut *Future) {
+	conn.shard[reqid&(shards-1)].Lock()
+	fut = conn.fetchFutureImp(reqid)
+	conn.shard[reqid&(shards-1)].Unlock()
+	return fut
+}
+
+func (conn *Connection) fetchFutureImp(reqid uint32) *Future {
 	shard := reqid & (shards-1)
 	pos := (reqid/shards) & (requestsMap-1)
 	fut := conn.shard[shard].requests[pos]
