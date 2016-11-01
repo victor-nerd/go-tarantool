@@ -383,6 +383,8 @@ func (conn *Connection) unlinkFutureTime(shard uint32, fut *Future) {
 		} else {
 			conn.shard[i].last = fut.time.prev
 		}
+		fut.time.next = nil
+		fut.time.prev = nil
 	}
 }
 
@@ -409,6 +411,7 @@ func (conn *Connection) fetchFutureImp(reqid uint32) *Future {
 		if fut.next.requestId == reqid {
 			fut, fut.next = fut.next, fut.next.next
 			conn.unlinkFutureTime(shard, fut)
+			fut.next = nil
 			return fut
 		}
 		fut = fut.next
