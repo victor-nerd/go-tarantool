@@ -5,6 +5,7 @@ import (
 	"gopkg.in/vmihailenco/msgpack.v2"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -156,7 +157,7 @@ var spaceNo = uint32(512)
 var spaceName = "test"
 var indexNo = uint32(0)
 var indexName = "primary"
-var opts = Opts{Timeout: 500 * time.Millisecond, User: "test", Pass: "test"}
+var opts = Opts{Timeout: 5000 * time.Millisecond, User: "test", Pass: "test"}
 
 const N = 500
 
@@ -318,7 +319,7 @@ func BenchmarkClientFutureParallelTyped(b *testing.B) {
 	})
 }
 
-func BenchmarkClientParrallel(b *testing.B) {
+func BenchmarkClientParallel(b *testing.B) {
 	conn, err := Connect(server, opts)
 	if err != nil {
 		b.Errorf("No connection available")
@@ -341,6 +342,33 @@ func BenchmarkClientParrallel(b *testing.B) {
 	})
 }
 
+func BenchmarkClientParallelMassive(b *testing.B) {
+	conn, err := Connect(server, opts)
+	if err != nil {
+		b.Errorf("No connection available")
+		return
+	}
+
+	_, err = conn.Replace(spaceNo, []interface{}{uint(1111), "hello", "world"})
+	if err != nil {
+		b.Errorf("No connection available")
+	}
+
+	var wg sync.WaitGroup
+	for i:=0; i<b.N; i++ {
+		wg.Add(1)
+		go func() {
+			var r []Tuple
+			err = conn.SelectTyped(spaceNo, indexNo, 0, 1, IterEq, []interface{}{uint(1111)}, &r)
+			//_, err = conn.Select(spaceNo, indexNo, 0, 1, IterEq, []interface{}{uint(1111)})
+			wg.Done()
+			if err != nil {
+				b.Errorf("No connection available")
+			}
+		}()
+	}
+	wg.Wait()
+}
 ///////////////////
 
 func TestClient(t *testing.T) {
