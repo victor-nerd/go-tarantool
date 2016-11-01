@@ -289,18 +289,13 @@ func (req *Request) future(body func (*msgpack.Encoder)error) (fut *Future) {
 	req.conn.requests[req.requestId] = fut
 	req.conn.reqmut.Unlock()
 
-	var sent bool
-	select {
-	case req.conn.packets <- (packet):
-		sent = true
-	default:
-	}
-
 	if req.conn.opts.Timeout > 0 {
 		fut.timeout = time.AfterFunc(req.conn.opts.Timeout, fut.timeouted)
 	}
 
-	if !sent {
+	select {
+	case req.conn.packets <- (packet):
+	default:
 		// if connection is totally closed, then req.conn.packets will be full
 		// if connection is busy, we can reach timeout
 		select {
