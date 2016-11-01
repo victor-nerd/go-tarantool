@@ -15,7 +15,8 @@ import (
 )
 
 const shards = 16
-const requestsMap = 2*1024
+const requestsMap = 2 * 1024
+
 var epoch = time.Now()
 
 type Connection struct {
@@ -27,17 +28,17 @@ type Connection struct {
 	Schema    *Schema
 	requestId uint32
 	Greeting  *Greeting
-	shard      [shards]struct {
+	shard     [shards]struct {
 		sync.Mutex
 		requests []*Future
-		first *Future
-		last  **Future
-		_pad  [128]byte
+		first    *Future
+		last     **Future
+		_pad     [128]byte
 	}
-	packets   chan []byte
-	control   chan struct{}
-	opts      Opts
-	closed    bool
+	packets chan []byte
+	control chan struct{}
+	opts    Opts
+	closed  bool
 }
 
 type Greeting struct {
@@ -160,9 +161,9 @@ func (conn *Connection) dial() (err error) {
 func (conn *Connection) writeAuthRequest(w *bufio.Writer, scramble []byte) (err error) {
 	request := conn.newFuture(AuthRequest)
 	packet, err := request.pack(func(enc *msgpack.Encoder) error {
-		return enc.Encode(map[uint32]interface{} {
+		return enc.Encode(map[uint32]interface{}{
 			KeyUserName: conn.opts.User,
-			KeyTuple: []interface{}{string("chap-sha1"), string(scramble)},
+			KeyTuple:    []interface{}{string("chap-sha1"), string(scramble)},
 		})
 	})
 	if err != nil {
@@ -354,14 +355,14 @@ func (conn *Connection) reader() {
 }
 
 func (conn *Connection) putFuture(fut *Future) {
-	shard := fut.requestId & (shards-1)
+	shard := fut.requestId & (shards - 1)
 	conn.shard[shard].Lock()
 	if conn.closed {
 		conn.shard[shard].Unlock()
 		fut.err = ClientError{ErrConnectionClosed, "using closed connection"}
 		return
 	}
-	pos := (fut.requestId/shards) & (requestsMap-1)
+	pos := (fut.requestId / shards) & (requestsMap - 1)
 	fut.next = conn.shard[shard].requests[pos]
 	conn.shard[shard].requests[pos] = fut
 	if conn.opts.Timeout > 0 {
@@ -375,7 +376,7 @@ func (conn *Connection) putFuture(fut *Future) {
 
 func (conn *Connection) unlinkFutureTime(shard uint32, fut *Future) {
 	if fut.time.prev != nil {
-		i := fut.requestId&(shards-1)
+		i := fut.requestId & (shards - 1)
 		*fut.time.prev = fut.time.next
 		if fut.time.next != nil {
 			fut.time.next.time.prev = fut.time.prev
@@ -393,8 +394,8 @@ func (conn *Connection) fetchFuture(reqid uint32) (fut *Future) {
 }
 
 func (conn *Connection) fetchFutureImp(reqid uint32) *Future {
-	shard := reqid & (shards-1)
-	pos := (reqid/shards) & (requestsMap-1)
+	shard := reqid & (shards - 1)
+	pos := (reqid / shards) & (requestsMap - 1)
 	fut := conn.shard[shard].requests[pos]
 	if fut == nil {
 		return nil

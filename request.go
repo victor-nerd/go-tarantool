@@ -7,15 +7,15 @@ import (
 )
 
 type Future struct {
-	conn    *Connection
+	conn        *Connection
 	requestId   uint32
 	requestCode int32
-	resp    Response
-	err     error
-	ready   chan struct{}
-	timeout time.Duration
-	next    *Future
-	time    struct {
+	resp        Response
+	err         error
+	ready       chan struct{}
+	timeout     time.Duration
+	next        *Future
+	time        struct {
 		next *Future
 		prev **Future
 	}
@@ -31,7 +31,7 @@ func (conn *Connection) newFuture(requestCode int32) (fut *Future) {
 
 func (conn *Connection) Ping() (resp *Response, err error) {
 	future := conn.newFuture(PingRequest)
-	return future.send(func(enc *msgpack.Encoder)error{enc.EncodeMapLen(0);return nil}).Get()
+	return future.send(func(enc *msgpack.Encoder) error { enc.EncodeMapLen(0); return nil }).Get()
 }
 
 func (req *Future) fillSearch(enc *msgpack.Encoder, spaceNo, indexNo uint32, key []interface{}) error {
@@ -131,7 +131,7 @@ func (conn *Connection) SelectAsync(space, index interface{}, offset, limit, ite
 	if err != nil {
 		return badfuture(err)
 	}
-	return future.send(func (enc *msgpack.Encoder) error {
+	return future.send(func(enc *msgpack.Encoder) error {
 		enc.EncodeMapLen(6)
 		future.fillIterator(enc, offset, limit, iterator)
 		return future.fillSearch(enc, spaceNo, indexNo, key)
@@ -144,7 +144,7 @@ func (conn *Connection) InsertAsync(space interface{}, tuple interface{}) *Futur
 	if err != nil {
 		return badfuture(err)
 	}
-	return future.send(func (enc *msgpack.Encoder) error {
+	return future.send(func(enc *msgpack.Encoder) error {
 		enc.EncodeMapLen(2)
 		return future.fillInsert(enc, spaceNo, tuple)
 	})
@@ -156,7 +156,7 @@ func (conn *Connection) ReplaceAsync(space interface{}, tuple interface{}) *Futu
 	if err != nil {
 		return badfuture(err)
 	}
-	return future.send(func (enc *msgpack.Encoder) error {
+	return future.send(func(enc *msgpack.Encoder) error {
 		enc.EncodeMapLen(2)
 		return future.fillInsert(enc, spaceNo, tuple)
 	})
@@ -168,7 +168,7 @@ func (conn *Connection) DeleteAsync(space, index interface{}, key []interface{})
 	if err != nil {
 		return badfuture(err)
 	}
-	return future.send(func (enc *msgpack.Encoder) error {
+	return future.send(func(enc *msgpack.Encoder) error {
 		enc.EncodeMapLen(3)
 		return future.fillSearch(enc, spaceNo, indexNo, key)
 	})
@@ -180,7 +180,7 @@ func (conn *Connection) UpdateAsync(space, index interface{}, key, ops []interfa
 	if err != nil {
 		return badfuture(err)
 	}
-	return future.send(func (enc *msgpack.Encoder) error {
+	return future.send(func(enc *msgpack.Encoder) error {
 		enc.EncodeMapLen(4)
 		if err := future.fillSearch(enc, spaceNo, indexNo, key); err != nil {
 			return err
@@ -196,7 +196,7 @@ func (conn *Connection) UpsertAsync(space interface{}, tuple interface{}, ops []
 	if err != nil {
 		return badfuture(err)
 	}
-	return future.send(func (enc *msgpack.Encoder) error {
+	return future.send(func(enc *msgpack.Encoder) error {
 		enc.EncodeMapLen(3)
 		enc.EncodeUint64(KeySpaceNo)
 		enc.EncodeUint64(uint64(spaceNo))
@@ -211,7 +211,7 @@ func (conn *Connection) UpsertAsync(space interface{}, tuple interface{}, ops []
 
 func (conn *Connection) CallAsync(functionName string, args []interface{}) *Future {
 	future := conn.newFuture(CallRequest)
-	return future.send(func (enc *msgpack.Encoder) error {
+	return future.send(func(enc *msgpack.Encoder) error {
 		enc.EncodeMapLen(2)
 		enc.EncodeUint64(KeyFunctionName)
 		enc.EncodeString(functionName)
@@ -222,7 +222,7 @@ func (conn *Connection) CallAsync(functionName string, args []interface{}) *Futu
 
 func (conn *Connection) EvalAsync(expr string, args []interface{}) *Future {
 	future := conn.newFuture(EvalRequest)
-	return future.send(func (enc *msgpack.Encoder) error {
+	return future.send(func(enc *msgpack.Encoder) error {
 		enc.EncodeMapLen(2)
 		enc.EncodeUint64(KeyExpression)
 		enc.EncodeString(expr)
@@ -235,7 +235,7 @@ func (conn *Connection) EvalAsync(expr string, args []interface{}) *Future {
 // private
 //
 
-func (fut *Future) pack(body func (*msgpack.Encoder)error) (packet []byte, err error) {
+func (fut *Future) pack(body func(*msgpack.Encoder) error) (packet []byte, err error) {
 	rid := fut.requestId
 	h := make(smallWBuf, 0, 48)
 	h = append(h, smallWBuf{
@@ -262,7 +262,7 @@ func (fut *Future) pack(body func (*msgpack.Encoder)error) (packet []byte, err e
 	return
 }
 
-func (fut *Future) send(body func (*msgpack.Encoder)error) *Future {
+func (fut *Future) send(body func(*msgpack.Encoder) error) *Future {
 
 	// check connection ready to process packets
 	if closed := fut.conn.closed; closed {
