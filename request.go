@@ -296,10 +296,8 @@ func (req *Request) future(body func (*msgpack.Encoder)error) (fut *Future) {
 	default:
 	}
 
-	var timeout <-chan time.Time
 	if req.conn.opts.Timeout > 0 {
-		fut.timeout = time.NewTimer(req.conn.opts.Timeout)
-		timeout = fut.timeout.C
+		fut.timeout = time.AfterFunc(req.conn.opts.Timeout, fut.timeouted)
 	}
 
 	if !sent {
@@ -308,9 +306,6 @@ func (req *Request) future(body func (*msgpack.Encoder)error) (fut *Future) {
 		select {
 		case req.conn.packets <- (packet):
 		case <-fut.ready:
-		case <-timeout:
-			fut.timeout.C = closedtimechan
-			fut.timeouted()
 		}
 	}
 
@@ -337,19 +332,7 @@ func (fut *Future) wait() {
 	if fut.ready == nil {
 		return
 	}
-	select {
-	case <-fut.ready:
-	default:
-		if timeout := fut.timeout; timeout != nil {
-			select {
-			case <-fut.ready:
-			case <-timeout.C:
-				fut.timeouted()
-			}
-		} else {
-			<-fut.ready
-		}
-	}
+	<-fut.ready
 	if fut.timeout != nil {
 		fut.timeout.Stop()
 		fut.timeout = nil
