@@ -22,11 +22,11 @@ type Future struct {
 }
 
 func (conn *Connection) newFuture(requestCode int32) (fut *Future) {
-	fut = &Future{}
-	fut.conn = conn
-	fut.requestId = conn.nextRequestId()
-	fut.requestCode = requestCode
-	return
+	return &Future{
+		conn:        conn,
+		requestId:   conn.nextRequestId(),
+		requestCode: requestCode,
+	}
 }
 
 func (conn *Connection) Ping() (resp *Response, err error) {
