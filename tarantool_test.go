@@ -617,6 +617,17 @@ func TestClient(t *testing.T) {
 		t.Errorf("Response.Data is empty after Eval")
 	}
 
+	// Call vs Call17
+	resp, err = conn.Call("simple_incr", []interface{}{1})
+	if resp.Data[0].([]interface{})[0].(uint64) != 2 {
+		t.Errorf("result is not {{1}} : %v", resp.Data)
+	}
+
+	resp, err = conn.Call17("simple_incr", []interface{}{1})
+	if resp.Data[0].(uint64) != 2 {
+		t.Errorf("result is not {{1}} : %v", resp.Data)
+	}
+
 	// Eval
 	resp, err = conn.Eval("return 5 + 6", []interface{}{})
 	if err != nil {

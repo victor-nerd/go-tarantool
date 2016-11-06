@@ -83,15 +83,23 @@ func (conn *Connection) Upsert(space interface{}, tuple, ops []interface{}) (res
 	return conn.UpsertAsync(space, tuple, ops).Get()
 }
 
+// Call calls registered function.
+// It uses request code for tarantool 1.6, so result is converted to array of arrays
 func (conn *Connection) Call(functionName string, args []interface{}) (resp *Response, err error) {
 	return conn.CallAsync(functionName, args).Get()
+}
+
+// Call17 calls registered function.
+// It uses request code for tarantool 1.7, so result is not converted
+// (though, keep in mind, result is always array)
+func (conn *Connection) Call17(functionName string, args []interface{}) (resp *Response, err error) {
+	return conn.Call17Async(functionName, args).Get()
 }
 
 func (conn *Connection) Eval(expr string, args []interface{}) (resp *Response, err error) {
 	return conn.EvalAsync(expr, args).Get()
 }
 
-// Typed methods
 func (conn *Connection) SelectTyped(space, index interface{}, offset, limit, iterator uint32, key []interface{}, result interface{}) (err error) {
 	return conn.SelectAsync(space, index, offset, limit, iterator, key).GetTyped(result)
 }
@@ -116,8 +124,17 @@ func (conn *Connection) UpsertTyped(space interface{}, tuple, ops []interface{},
 	return conn.UpsertAsync(space, tuple, ops).GetTyped(result)
 }
 
+// CallTyped calls registered function.
+// It uses request code for tarantool 1.6, so result is converted to array of arrays
 func (conn *Connection) CallTyped(functionName string, args []interface{}, result interface{}) (err error) {
 	return conn.CallAsync(functionName, args).GetTyped(result)
+}
+
+// Call17Typed calls registered function.
+// It uses request code for tarantool 1.7, so result is not converted
+// (though, keep in mind, result is always array)
+func (conn *Connection) Call17Typed(functionName string, args []interface{}, result interface{}) (err error) {
+	return conn.Call17Async(functionName, args).GetTyped(result)
 }
 
 func (conn *Connection) EvalTyped(expr string, args []interface{}, result interface{}) (err error) {
@@ -211,6 +228,17 @@ func (conn *Connection) UpsertAsync(space interface{}, tuple interface{}, ops []
 
 func (conn *Connection) CallAsync(functionName string, args []interface{}) *Future {
 	future := conn.newFuture(CallRequest)
+	return future.send(func(enc *msgpack.Encoder) error {
+		enc.EncodeMapLen(2)
+		enc.EncodeUint64(KeyFunctionName)
+		enc.EncodeString(functionName)
+		enc.EncodeUint64(KeyTuple)
+		return enc.Encode(args)
+	})
+}
+
+func (conn *Connection) Call17Async(functionName string, args []interface{}) *Future {
+	future := conn.newFuture(Call17Request)
 	return future.send(func(enc *msgpack.Encoder) error {
 		enc.EncodeMapLen(2)
 		enc.EncodeUint64(KeyFunctionName)

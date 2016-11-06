@@ -39,6 +39,10 @@ st:truncate()
 
 --box.schema.user.grant('guest', 'read,write,execute', 'universe')
 box.schema.func.create('box.info')
+function simple_incr(a)
+    return a+1
+end
+box.schema.func.create('simple_incr')
 
 -- auth testing: access control
 if not box.schema.user.exists('test') then
