@@ -5,6 +5,7 @@ import (
 	"gopkg.in/vmihailenco/msgpack.v2"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -156,7 +157,7 @@ var spaceNo = uint32(512)
 var spaceName = "test"
 var indexNo = uint32(0)
 var indexName = "primary"
-var opts = Opts{Timeout: 500 * time.Millisecond, User: "test", Pass: "test"}
+var opts = Opts{Timeout: 5000 * time.Millisecond, User: "test", Pass: "test"}
 
 const N = 500
 
@@ -268,7 +269,7 @@ func BenchmarkClientFutureParallel(b *testing.B) {
 			exit = j < N
 			for j > 0 {
 				j--
-				_, err = fs[j].Get()
+				_, err := fs[j].Get()
 				if err != nil {
 					b.Error(err)
 					break
@@ -304,7 +305,7 @@ func BenchmarkClientFutureParallelTyped(b *testing.B) {
 			for j > 0 {
 				var r []Tuple
 				j--
-				err = fs[j].GetTyped(&r)
+				err := fs[j].GetTyped(&r)
 				if err != nil {
 					b.Error(err)
 					break
@@ -318,7 +319,7 @@ func BenchmarkClientFutureParallelTyped(b *testing.B) {
 	})
 }
 
-func BenchmarkClientParrallel(b *testing.B) {
+func BenchmarkClientParallel(b *testing.B) {
 	conn, err := Connect(server, opts)
 	if err != nil {
 		b.Errorf("No connection available")
@@ -332,13 +333,44 @@ func BenchmarkClientParrallel(b *testing.B) {
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			_, err = conn.Select(spaceNo, indexNo, 0, 1, IterEq, []interface{}{uint(1111)})
+			_, err := conn.Select(spaceNo, indexNo, 0, 1, IterEq, []interface{}{uint(1111)})
 			if err != nil {
 				b.Errorf("No connection available")
 				break
 			}
 		}
 	})
+}
+
+func BenchmarkClientParallelMassive(b *testing.B) {
+	conn, err := Connect(server, opts)
+	if err != nil {
+		b.Errorf("No connection available")
+		return
+	}
+
+	_, err = conn.Replace(spaceNo, []interface{}{uint(1111), "hello", "world"})
+	if err != nil {
+		b.Errorf("No connection available")
+	}
+
+	limit := make(chan struct{}, 128*1024)
+	var wg sync.WaitGroup
+	for i := 0; i < b.N; i++ {
+		wg.Add(1)
+		limit <- struct{}{}
+		go func() {
+			var r []Tuple
+			err = conn.SelectTyped(spaceNo, indexNo, 0, 1, IterEq, []interface{}{uint(1111)}, &r)
+			//_, err = conn.Select(spaceNo, indexNo, 0, 1, IterEq, []interface{}{uint(1111)})
+			<-limit
+			wg.Done()
+			if err != nil {
+				b.Errorf("No connection available")
+			}
+		}()
+	}
+	wg.Wait()
 }
 
 ///////////////////
@@ -753,8 +785,8 @@ func TestSchema(t *testing.T) {
 	if ifield1.Id != 1 || ifield2.Id != 2 {
 		t.Errorf("index field has incorrect Id")
 	}
-	if ifield1.Type != "num" || ifield2.Type != "STR" {
-		t.Errorf("index field has incorrect Type[")
+	if (ifield1.Type != "num" && ifield1.Type != "unsigned") || (ifield2.Type != "STR" && ifield2.Type != "string") {
+		t.Errorf("index field has incorrect Type '%s'", ifield2.Type)
 	}
 
 	var rSpaceNo, rIndexNo uint32

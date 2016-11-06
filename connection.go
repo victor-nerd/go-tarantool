@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"errors"
+	"gopkg.in/vmihailenco/msgpack.v2"
 	"io"
 	"log"
 	"net"
@@ -13,20 +14,31 @@ import (
 	"time"
 )
 
+const shards = 16
+const requestsMap = 2 * 1024
+
+var epoch = time.Now()
+
 type Connection struct {
 	addr      string
 	c         *net.TCPConn
 	r         *bufio.Reader
 	w         *bufio.Writer
-	mutex     *sync.Mutex
+	mutex     sync.Mutex
 	Schema    *Schema
 	requestId uint32
 	Greeting  *Greeting
-	requests  map[uint32]*Future
-	packets   chan []byte
-	control   chan struct{}
-	opts      Opts
-	closed    bool
+	shard     [shards]struct {
+		sync.Mutex
+		requests []*Future
+		first    *Future
+		last     **Future
+		_pad     [128]byte
+	}
+	packets chan []byte
+	control chan struct{}
+	opts    Opts
+	closed  bool
 }
 
 type Greeting struct {
@@ -46,13 +58,15 @@ func Connect(addr string, opts Opts) (conn *Connection, err error) {
 
 	conn = &Connection{
 		addr:      addr,
-		mutex:     &sync.Mutex{},
 		requestId: 0,
 		Greeting:  &Greeting{},
-		requests:  make(map[uint32]*Future),
-		packets:   make(chan []byte, 64),
+		packets:   make(chan []byte, 16*1024),
 		control:   make(chan struct{}),
 		opts:      opts,
+	}
+	for i := range conn.shard {
+		conn.shard[i].last = &conn.shard[i].first
+		conn.shard[i].requests = make([]*Future, requestsMap)
 	}
 
 	var reconnect time.Duration
@@ -66,6 +80,7 @@ func Connect(addr string, opts Opts) (conn *Connection, err error) {
 
 	go conn.writer()
 	go conn.reader()
+	go conn.timeouts()
 
 	// TODO: reload schema after reconnect
 	if err = conn.loadSchema(); err != nil {
@@ -107,7 +122,7 @@ func (conn *Connection) dial() (err error) {
 	c := connection.(*net.TCPConn)
 	c.SetNoDelay(true)
 	r := bufio.NewReaderSize(c, 128*1024)
-	w := bufio.NewWriter(c)
+	w := bufio.NewWriterSize(c, 128*1024)
 	greeting := make([]byte, 128)
 	_, err = io.ReadFull(r, greeting)
 	if err != nil {
@@ -144,10 +159,13 @@ func (conn *Connection) dial() (err error) {
 }
 
 func (conn *Connection) writeAuthRequest(w *bufio.Writer, scramble []byte) (err error) {
-	request := conn.NewRequest(AuthRequest)
-	request.body[KeyUserName] = conn.opts.User
-	request.body[KeyTuple] = []interface{}{string("chap-sha1"), string(scramble)}
-	packet, err := request.pack()
+	request := conn.newFuture(AuthRequest)
+	packet, err := request.pack(func(enc *msgpack.Encoder) error {
+		return enc.Encode(map[uint32]interface{}{
+			KeyUserName: conn.opts.User,
+			KeyTuple:    []interface{}{string("chap-sha1"), string(scramble)},
+		})
+	})
 	if err != nil {
 		return errors.New("auth: pack error " + err.Error())
 	}
@@ -233,16 +251,38 @@ func (conn *Connection) closeConnection(neterr error, r *bufio.Reader, w *bufio.
 	conn.c = nil
 	conn.r = nil
 	conn.w = nil
-	for rid, fut := range conn.requests {
-		fut.err = neterr
-		close(fut.ready)
-		delete(conn.requests, rid)
+	conn.lockShards()
+	defer conn.unlockShards()
+	for i := range conn.shard {
+		requests := conn.shard[i].requests
+		for pos, fut := range requests {
+			requests[pos] = nil
+			for fut != nil {
+				fut.err = neterr
+				close(fut.ready)
+				fut, fut.next = fut.next, nil
+			}
+		}
 	}
 	return
 }
 
+func (conn *Connection) lockShards() {
+	for i := range conn.shard {
+		conn.shard[i].Lock()
+	}
+}
+
+func (conn *Connection) unlockShards() {
+	for i := range conn.shard {
+		conn.shard[i].Unlock()
+	}
+}
+
 func (conn *Connection) closeConnectionForever(err error) error {
+	conn.lockShards()
 	conn.closed = true
+	conn.unlockShards()
 	close(conn.control)
 	_, _, err = conn.closeConnection(err, nil, nil)
 	return err
@@ -305,16 +345,110 @@ func (conn *Connection) reader() {
 			r, _, _ = conn.closeConnection(err, r, nil)
 			continue
 		}
-		conn.mutex.Lock()
-		if fut, ok := conn.requests[resp.RequestId]; ok {
-			delete(conn.requests, resp.RequestId)
+		if fut := conn.fetchFuture(resp.RequestId); fut != nil {
 			fut.resp = resp
 			close(fut.ready)
-			conn.mutex.Unlock()
 		} else {
-			conn.mutex.Unlock()
 			log.Printf("tarantool: unexpected requestId (%d) in response", uint(resp.RequestId))
 		}
+	}
+}
+
+func (conn *Connection) putFuture(fut *Future) {
+	shard := fut.requestId & (shards - 1)
+	conn.shard[shard].Lock()
+	if conn.closed {
+		conn.shard[shard].Unlock()
+		fut.err = ClientError{ErrConnectionClosed, "using closed connection"}
+		return
+	}
+	pos := (fut.requestId / shards) & (requestsMap - 1)
+	fut.next = conn.shard[shard].requests[pos]
+	conn.shard[shard].requests[pos] = fut
+	if conn.opts.Timeout > 0 {
+		fut.timeout = time.Now().Sub(epoch) + conn.opts.Timeout
+		fut.time.prev = conn.shard[shard].last
+		*conn.shard[shard].last = fut
+		conn.shard[shard].last = &fut.time.next
+	}
+	conn.shard[shard].Unlock()
+}
+
+func (conn *Connection) unlinkFutureTime(shard uint32, fut *Future) {
+	if fut.time.prev != nil {
+		i := fut.requestId & (shards - 1)
+		*fut.time.prev = fut.time.next
+		if fut.time.next != nil {
+			fut.time.next.time.prev = fut.time.prev
+		} else {
+			conn.shard[i].last = fut.time.prev
+		}
+		fut.time.next = nil
+		fut.time.prev = nil
+	}
+}
+
+func (conn *Connection) fetchFuture(reqid uint32) (fut *Future) {
+	conn.shard[reqid&(shards-1)].Lock()
+	fut = conn.fetchFutureImp(reqid)
+	conn.shard[reqid&(shards-1)].Unlock()
+	return fut
+}
+
+func (conn *Connection) fetchFutureImp(reqid uint32) *Future {
+	shard := reqid & (shards - 1)
+	pos := (reqid / shards) & (requestsMap - 1)
+	fut := conn.shard[shard].requests[pos]
+	if fut == nil {
+		return nil
+	}
+	if fut.requestId == reqid {
+		conn.shard[shard].requests[pos] = fut.next
+		conn.unlinkFutureTime(shard, fut)
+		return fut
+	}
+	for fut.next != nil {
+		if fut.next.requestId == reqid {
+			fut, fut.next = fut.next, fut.next.next
+			conn.unlinkFutureTime(shard, fut)
+			fut.next = nil
+			return fut
+		}
+		fut = fut.next
+	}
+	return nil
+}
+
+func (conn *Connection) timeouts() {
+	timeout := conn.opts.Timeout
+	if timeout == 0 {
+		timeout = time.Second
+	}
+	t := time.NewTimer(timeout)
+	for {
+		var nowepoch time.Duration
+		select {
+		case <-conn.control:
+			t.Stop()
+			return
+		case now := <-t.C:
+			nowepoch = now.Sub(epoch)
+		}
+		minNext := nowepoch + timeout
+		for i := range conn.shard {
+			conn.shard[i].Lock()
+			for conn.shard[i].first != nil && conn.shard[i].first.timeout < nowepoch {
+				fut := conn.shard[i].first
+				conn.shard[i].Unlock()
+				fut.timeouted()
+				conn.shard[i].Lock()
+			}
+			if conn.shard[i].first != nil && conn.shard[i].first.timeout < minNext {
+				minNext = conn.shard[i].first.timeout
+			}
+			conn.shard[i].Unlock()
+		}
+		t.Reset(minNext - time.Now().Sub(epoch))
 	}
 }
 

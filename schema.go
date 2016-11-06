@@ -50,7 +50,6 @@ const (
 )
 
 func (conn *Connection) loadSchema() (err error) {
-	var req *Request
 	var resp *Response
 
 	schema := new(Schema)
@@ -58,10 +57,7 @@ func (conn *Connection) loadSchema() (err error) {
 	schema.Spaces = make(map[string]*Space)
 
 	// reload spaces
-	req = conn.NewRequest(SelectRequest)
-	req.fillSearch(vspaceSpId, 0, []interface{}{})
-	req.fillIterator(0, maxSchemas, IterAll)
-	resp, err = req.perform()
+	resp, err = conn.Select(vspaceSpId, 0, 0, maxSchemas, IterAll, []interface{}{})
 	if err != nil {
 		return err
 	}
@@ -114,10 +110,7 @@ func (conn *Connection) loadSchema() (err error) {
 	}
 
 	// reload indexes
-	req = conn.NewRequest(SelectRequest)
-	req.fillSearch(vindexSpId, 0, []interface{}{})
-	req.fillIterator(0, maxSchemas, IterAll)
-	resp, err = req.perform()
+	resp, err = conn.Select(vindexSpId, 0, 0, maxSchemas, IterAll, []interface{}{})
 	if err != nil {
 		return err
 	}
