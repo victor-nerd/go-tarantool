@@ -120,10 +120,6 @@ func (conn *Connection) UpdateTyped(space, index interface{}, key, ops []interfa
 	return conn.UpdateAsync(space, index, key, ops).GetTyped(result)
 }
 
-func (conn *Connection) UpsertTyped(space interface{}, tuple, ops []interface{}, result interface{}) (err error) {
-	return conn.UpsertAsync(space, tuple, ops).GetTyped(result)
-}
-
 // CallTyped calls registered function.
 // It uses request code for tarantool 1.6, so result is converted to array of arrays
 func (conn *Connection) CallTyped(functionName string, args []interface{}, result interface{}) (err error) {
