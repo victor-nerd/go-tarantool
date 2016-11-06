@@ -339,9 +339,3 @@ func (fut *Future) GetTyped(result interface{}) error {
 	fut.err = fut.resp.decodeBodyTyped(result)
 	return fut.err
 }
-
-var closedtimechan = make(chan time.Time)
-
-func init() {
-	close(closedtimechan)
-}
