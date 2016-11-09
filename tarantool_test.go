@@ -165,6 +165,7 @@ func BenchmarkClientSerial(b *testing.B) {
 	var err error
 
 	conn, err := Connect(server, opts)
+	defer conn.Close()
 	if err != nil {
 		b.Errorf("No connection available")
 		return
@@ -187,6 +188,7 @@ func BenchmarkClientFuture(b *testing.B) {
 	var err error
 
 	conn, err := Connect(server, opts)
+	defer conn.Close()
 	if err != nil {
 		b.Error(err)
 		return
@@ -216,6 +218,7 @@ func BenchmarkClientFutureTyped(b *testing.B) {
 	var err error
 
 	conn, err := Connect(server, opts)
+	defer conn.Close()
 	if err != nil {
 		b.Errorf("No connection available")
 		return
@@ -248,6 +251,7 @@ func BenchmarkClientFutureParallel(b *testing.B) {
 	var err error
 
 	conn, err := Connect(server, opts)
+	defer conn.Close()
 	if err != nil {
 		b.Errorf("No connection available")
 		return
@@ -283,6 +287,7 @@ func BenchmarkClientFutureParallelTyped(b *testing.B) {
 	var err error
 
 	conn, err := Connect(server, opts)
+	defer conn.Close()
 	if err != nil {
 		b.Errorf("No connection available")
 		return
@@ -321,6 +326,7 @@ func BenchmarkClientFutureParallelTyped(b *testing.B) {
 
 func BenchmarkClientParallel(b *testing.B) {
 	conn, err := Connect(server, opts)
+	defer conn.Close()
 	if err != nil {
 		b.Errorf("No connection available")
 		return
@@ -344,6 +350,7 @@ func BenchmarkClientParallel(b *testing.B) {
 
 func BenchmarkClientParallelMassive(b *testing.B) {
 	conn, err := Connect(server, opts)
+	defer conn.Close()
 	if err != nil {
 		b.Errorf("No connection available")
 		return
@@ -381,6 +388,7 @@ func TestClient(t *testing.T) {
 	var conn *Connection
 
 	conn, err = Connect(server, opts)
+	defer conn.Close()
 	if err != nil {
 		t.Errorf("Failed to connect: %s", err.Error())
 		return
@@ -650,6 +658,7 @@ func TestSchema(t *testing.T) {
 	var conn *Connection
 
 	conn, err = Connect(server, opts)
+	defer conn.Close()
 	if err != nil {
 		t.Errorf("Failed to connect: %s", err.Error())
 		return
@@ -833,6 +842,7 @@ func TestClientNamed(t *testing.T) {
 	var conn *Connection
 
 	conn, err = Connect(server, opts)
+	defer conn.Close()
 	if err != nil {
 		t.Errorf("Failed to connect: %s", err.Error())
 		return
@@ -924,6 +934,7 @@ func TestComplexStructs(t *testing.T) {
 	var conn *Connection
 
 	conn, err = Connect(server, opts)
+	defer conn.Close()
 	if err != nil {
 		t.Errorf("Failed to connect: %s", err.Error())
 		return
