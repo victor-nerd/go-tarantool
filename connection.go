@@ -47,7 +47,7 @@ type Connection struct {
 	opts    Opts
 	closed  bool
 	dec     *msgpack.Decoder
-	lenbuf [PacketLengthBytes]byte
+	lenbuf  [PacketLengthBytes]byte
 }
 
 type Greeting struct {
