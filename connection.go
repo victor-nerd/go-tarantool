@@ -14,14 +14,14 @@ import (
 	"time"
 )
 
-const shards = 512
+const shards = 32
 const requestsMap = 32
 
 var epoch = time.Now()
 
 type connShard struct {
 	rmut     sync.Mutex
-	requests [requestsMap]*Future
+	requests [requestsMap]struct{ first, last *Future }
 	first    *Future
 	last     **Future
 	bufmut   sync.Mutex
@@ -264,8 +264,10 @@ func (conn *Connection) closeConnection(neterr error, r *bufio.Reader, w *bufio.
 	defer conn.unlockShards()
 	for i := range conn.shard {
 		requests := conn.shard[i].requests
-		for pos, fut := range requests {
-			requests[pos] = nil
+		for pos, pair := range requests {
+			fut := pair.first
+			requests[pos].first = nil
+			requests[pos].last = nil
 			for fut != nil {
 				fut.err = neterr
 				close(fut.ready)
@@ -393,8 +395,13 @@ func (conn *Connection) putFuture(fut *Future, body func(*msgpack.Encoder) error
 	}
 	shard.bufmut.Unlock()
 	pos := (fut.requestId / shards) & (requestsMap - 1)
-	fut.next = shard.requests[pos]
-	shard.requests[pos] = fut
+	pair := &shard.requests[pos]
+	if pair.last == nil {
+		shard.requests[pos].first = fut
+	} else {
+		shard.requests[pos].last.next = fut
+	}
+	shard.requests[pos].last = fut
 	if conn.opts.Timeout > 0 {
 		fut.timeout = time.Now().Sub(epoch) + conn.opts.Timeout
 		fut.time.prev = shard.last
@@ -432,18 +439,25 @@ func (conn *Connection) fetchFuture(reqid uint32) (fut *Future) {
 func (conn *Connection) fetchFutureImp(reqid uint32) *Future {
 	shard := &conn.shard[reqid&(shards-1)]
 	pos := (reqid / shards) & (requestsMap - 1)
-	fut := shard.requests[pos]
+	pair := &shard.requests[pos]
+	fut := pair.first
 	if fut == nil {
 		return nil
 	}
 	if fut.requestId == reqid {
-		shard.requests[pos] = fut.next
+		pair.first = fut.next
+		if pair.last == fut {
+			pair.last = nil
+		}
 		conn.unlinkFutureTime(fut)
 		return fut
 	}
 	for fut.next != nil {
 		next := fut.next
 		if next.requestId == reqid {
+			if pair.last == next {
+				pair.last = fut
+			}
 			fut, fut.next = next, next.next
 			fut.next = nil
 			conn.unlinkFutureTime(fut)
