@@ -39,19 +39,18 @@ st:truncate()
 
 --box.schema.user.grant('guest', 'read,write,execute', 'universe')
 box.schema.func.create('box.info')
-function simple_incr(a)
-    return a+1
-end
 box.schema.func.create('simple_incr')
 
 -- auth testing: access control
-if not box.schema.user.exists('test') then
-    box.schema.user.create('test', {password = 'test'})
-    box.schema.user.grant('test', 'execute', 'universe')
-    box.schema.user.grant('test', 'read,write', 'space', 'test')
-    box.schema.user.grant('test', 'read,write', 'space', 'schematest')
-end
+box.schema.user.create('test', {password = 'test'})
+box.schema.user.grant('test', 'execute', 'universe')
+box.schema.user.grant('test', 'read,write', 'space', 'test')
+box.schema.user.grant('test', 'read,write', 'space', 'schematest')
 end)
+
+function simple_incr(a)
+    return a+1
+end
 
 box.space.test:truncate()
 local console = require 'console'
