@@ -228,7 +228,9 @@ func (conn *Connection) createConnection() (r *bufio.Reader, w *bufio.Writer, er
 					log.Printf("tarantool: last reconnect to %s failed: %s, giving it up.\n", conn.addr, err.Error())
 					err = ClientError{ErrConnectionClosed, "last reconnect failed"}
 					// mark connection as closed to avoid reopening by another goroutine
+					conn.lockShards()
 					conn.closed = true
+					conn.unlockShards()
 					return
 				}
 				log.Printf("tarantool: reconnect (%d/%d) to %s failed: %s\n", reconnects, conn.opts.MaxReconnects, conn.addr, err.Error())
@@ -264,6 +266,7 @@ func (conn *Connection) closeConnection(neterr error, r *bufio.Reader, w *bufio.
 	conn.lockShards()
 	defer conn.unlockShards()
 	for i := range conn.shard {
+		conn.shard[i].buf = conn.shard[i].buf[:0]
 		requests := conn.shard[i].requests
 		for pos, pair := range requests {
 			fut := pair.first
@@ -281,12 +284,14 @@ func (conn *Connection) closeConnection(neterr error, r *bufio.Reader, w *bufio.
 
 func (conn *Connection) lockShards() {
 	for i := range conn.shard {
+		conn.shard[i].bufmut.Lock()
 		conn.shard[i].rmut.Lock()
 	}
 }
 
 func (conn *Connection) unlockShards() {
 	for i := range conn.shard {
+		conn.shard[i].bufmut.Unlock()
 		conn.shard[i].rmut.Unlock()
 	}
 }
@@ -332,9 +337,12 @@ Main:
 		shard.bufmut.Lock()
 		packet, shard.buf = shard.buf, packet
 		shard.bufmut.Unlock()
+		if len(packet) == 0 {
+			continue
+		}
 		if err := write(w, packet); err != nil {
 			_, w, _ = conn.closeConnection(err, nil, w)
-			continue Main
+			continue
 		}
 		packet = packet[0:0]
 	}
