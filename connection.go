@@ -15,9 +15,21 @@ import (
 )
 
 const shards = 512
-const requestsMap = 16
+const requestsMap = 32
 
 var epoch = time.Now()
+
+type connShard struct {
+	rmut     sync.Mutex
+	requests [requestsMap]*Future
+	first    *Future
+	last     **Future
+	bufmut   sync.Mutex
+	buf      smallWBuf
+	enc      *msgpack.Encoder
+	bcache   smallWBuf
+	_pad     [16]uint64
+}
 
 type Connection struct {
 	addr      string
@@ -28,18 +40,11 @@ type Connection struct {
 	Schema    *Schema
 	requestId uint32
 	Greeting  *Greeting
-	shard     [shards]struct {
-		sync.Mutex
-		count    uint32
-		requests [requestsMap]*Future
-		first    *Future
-		last     **Future
-		buf      smallWBuf
-		enc      *msgpack.Encoder
-		bcache   smallWBuf
-	}
+
+	shard      [shards]connShard
+	dirtyShard chan uint32
+
 	rlimit  chan struct{}
-	packets chan struct{}
 	control chan struct{}
 	opts    Opts
 	closed  bool
@@ -62,14 +67,14 @@ type Opts struct {
 func Connect(addr string, opts Opts) (conn *Connection, err error) {
 
 	conn = &Connection{
-		addr:      addr,
-		requestId: 0,
-		Greeting:  &Greeting{},
-		rlimit:    make(chan struct{}, 1024*1024),
-		packets:   make(chan struct{}, 1024*1024),
-		control:   make(chan struct{}),
-		opts:      opts,
-		dec:       msgpack.NewDecoder(&smallBuf{}),
+		addr:       addr,
+		requestId:  0,
+		Greeting:   &Greeting{},
+		rlimit:     make(chan struct{}, 1024*1024),
+		dirtyShard: make(chan uint32, shards),
+		control:    make(chan struct{}),
+		opts:       opts,
+		dec:        msgpack.NewDecoder(&smallBuf{}),
 	}
 	for i := range conn.shard {
 		conn.shard[i].last = &conn.shard[i].first
@@ -277,13 +282,13 @@ func (conn *Connection) closeConnection(neterr error, r *bufio.Reader, w *bufio.
 
 func (conn *Connection) lockShards() {
 	for i := range conn.shard {
-		conn.shard[i].Lock()
+		conn.shard[i].rmut.Lock()
 	}
 }
 
 func (conn *Connection) unlockShards() {
 	for i := range conn.shard {
-		conn.shard[i].Unlock()
+		conn.shard[i].rmut.Unlock()
 	}
 }
 
@@ -299,20 +304,20 @@ func (conn *Connection) closeConnectionForever(err error) error {
 func (conn *Connection) writer() {
 	var w *bufio.Writer
 	var err error
-	var shardn int
+	var shardn uint32
 Main:
 	for !conn.closed {
 		select {
-		case <-conn.packets:
+		case shardn = <-conn.dirtyShard:
 		default:
 			runtime.Gosched()
-			if len(conn.packets) == 0 && w != nil {
+			if len(conn.dirtyShard) == 0 && w != nil {
 				if err := w.Flush(); err != nil {
 					_, w, _ = conn.closeConnection(err, nil, w)
 				}
 			}
 			select {
-			case <-conn.packets:
+			case shardn = <-conn.dirtyShard:
 			case <-conn.control:
 				return
 			}
@@ -323,31 +328,18 @@ Main:
 				return
 			}
 		}
-		for stop := shardn + shards; shardn != stop; shardn++ {
-			shard := &conn.shard[shardn&(shards-1)]
-			if nreq := atomic.LoadUint32(&shard.count); nreq > 0 {
-				shard.Lock()
-				nreq, shard.count = shard.count, 0
-				packet := shard.buf
-				shard.buf = nil
-				shard.Unlock()
-				if err := write(w, packet); err != nil {
-					_, w, _ = conn.closeConnection(err, nil, w)
-					continue Main
-				}
-				shard.Lock()
-				shard.bcache = packet[0:0]
-				shard.Unlock()
-				for ; nreq > 1; nreq-- {
-					select {
-					case <-conn.packets:
-					default:
-						break
-					}
-				}
-				break
-			}
+		shard := &conn.shard[shardn]
+		shard.bufmut.Lock()
+		packet := shard.buf
+		shard.buf = nil
+		shard.bufmut.Unlock()
+		if err := write(w, packet); err != nil {
+			_, w, _ = conn.closeConnection(err, nil, w)
+			continue Main
 		}
+		shard.bufmut.Lock()
+		shard.bcache = packet[0:0]
+		shard.bufmut.Unlock()
 	}
 }
 
@@ -385,12 +377,8 @@ func (conn *Connection) reader() {
 func (conn *Connection) putFuture(fut *Future, body func(*msgpack.Encoder) error) {
 	shardn := fut.requestId & (shards - 1)
 	shard := &conn.shard[shardn]
-	shard.Lock()
-	if conn.closed {
-		shard.Unlock()
-		fut.err = ClientError{ErrConnectionClosed, "using closed connection"}
-		return
-	}
+	shard.bufmut.Lock()
+	firstWritten := len(shard.buf) == 0
 	if cap(shard.buf) == 0 {
 		shard.buf, shard.bcache = shard.bcache, nil
 		if cap(shard.buf) == 0 {
@@ -398,11 +386,22 @@ func (conn *Connection) putFuture(fut *Future, body func(*msgpack.Encoder) error
 		}
 		shard.enc = msgpack.NewEncoder(&shard.buf)
 	}
+	blen := len(shard.buf)
 	if err := fut.pack(&shard.buf, shard.enc, body); err != nil {
+		shard.buf = shard.buf[:blen]
 		fut.err = err
-		shard.Unlock()
+		shard.bufmut.Unlock()
 		return
 	}
+	shard.rmut.Lock()
+	if conn.closed {
+		shard.buf = shard.buf[:blen]
+		shard.bufmut.Unlock()
+		shard.rmut.Unlock()
+		fut.err = ClientError{ErrConnectionClosed, "using closed connection"}
+		return
+	}
+	shard.bufmut.Unlock()
 	pos := (fut.requestId / shards) & (requestsMap - 1)
 	fut.next = shard.requests[pos]
 	shard.requests[pos] = fut
@@ -412,17 +411,19 @@ func (conn *Connection) putFuture(fut *Future, body func(*msgpack.Encoder) error
 		*shard.last = fut
 		shard.last = &fut.time.next
 	}
-	atomic.AddUint32(&shard.count, 1)
-	shard.Unlock()
+	shard.rmut.Unlock()
+	if firstWritten {
+		conn.dirtyShard <- shardn
+	}
 }
 
-func (conn *Connection) unlinkFutureTime(shard uint32, fut *Future) {
+func (conn *Connection) unlinkFutureTime(fut *Future) {
 	if fut.time.prev != nil {
-		i := fut.requestId & (shards - 1)
 		*fut.time.prev = fut.time.next
 		if fut.time.next != nil {
 			fut.time.next.time.prev = fut.time.prev
 		} else {
+			i := fut.requestId & (shards - 1)
 			conn.shard[i].last = fut.time.prev
 		}
 		fut.time.next = nil
@@ -431,15 +432,15 @@ func (conn *Connection) unlinkFutureTime(shard uint32, fut *Future) {
 }
 
 func (conn *Connection) fetchFuture(reqid uint32) (fut *Future) {
-	conn.shard[reqid&(shards-1)].Lock()
+	shard := &conn.shard[reqid&(shards-1)]
+	shard.rmut.Lock()
 	fut = conn.fetchFutureImp(reqid)
-	conn.shard[reqid&(shards-1)].Unlock()
+	shard.rmut.Unlock()
 	return fut
 }
 
 func (conn *Connection) fetchFutureImp(reqid uint32) *Future {
-	shardn := reqid & (shards - 1)
-	shard := &conn.shard[shardn]
+	shard := &conn.shard[reqid&(shards-1)]
 	pos := (reqid / shards) & (requestsMap - 1)
 	fut := shard.requests[pos]
 	if fut == nil {
@@ -447,17 +448,18 @@ func (conn *Connection) fetchFutureImp(reqid uint32) *Future {
 	}
 	if fut.requestId == reqid {
 		shard.requests[pos] = fut.next
-		conn.unlinkFutureTime(shardn, fut)
+		conn.unlinkFutureTime(fut)
 		return fut
 	}
 	for fut.next != nil {
-		if fut.next.requestId == reqid {
-			fut, fut.next = fut.next, fut.next.next
-			conn.unlinkFutureTime(shardn, fut)
+		next := fut.next
+		if next.requestId == reqid {
+			fut, fut.next = next, next.next
 			fut.next = nil
+			conn.unlinkFutureTime(fut)
 			return fut
 		}
-		fut = fut.next
+		fut = next
 	}
 	return nil
 }
@@ -479,17 +481,18 @@ func (conn *Connection) timeouts() {
 		}
 		minNext := nowepoch + timeout
 		for i := range conn.shard {
-			conn.shard[i].Lock()
-			for conn.shard[i].first != nil && conn.shard[i].first.timeout < nowepoch {
-				fut := conn.shard[i].first
-				conn.shard[i].Unlock()
+			shard := &conn.shard[i]
+			shard.rmut.Lock()
+			for shard.first != nil && shard.first.timeout < nowepoch {
+				fut := shard.first
+				shard.rmut.Unlock()
 				fut.timeouted()
-				conn.shard[i].Lock()
+				shard.rmut.Lock()
 			}
-			if conn.shard[i].first != nil && conn.shard[i].first.timeout < minNext {
-				minNext = conn.shard[i].first.timeout
+			if shard.first != nil && shard.first.timeout < minNext {
+				minNext = shard.first.timeout
 			}
-			conn.shard[i].Unlock()
+			shard.rmut.Unlock()
 		}
 		t.Reset(minNext - time.Now().Sub(epoch))
 	}

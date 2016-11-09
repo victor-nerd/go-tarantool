@@ -278,7 +278,6 @@ func (conn *Connection) EvalAsync(expr string, args []interface{}) *Future {
 
 func (fut *Future) pack(h *smallWBuf, enc *msgpack.Encoder, body func(*msgpack.Encoder) error) (err error) {
 	rid := fut.requestId
-	//h := make(smallWBuf, 0, 48)
 	hl := len(*h)
 	*h = append(*h, smallWBuf{
 		0xce, 0, 0, 0, 0, // length
@@ -290,7 +289,6 @@ func (fut *Future) pack(h *smallWBuf, enc *msgpack.Encoder, body func(*msgpack.E
 	}...)
 
 	if err = body(enc); err != nil {
-		*h = (*h)[:hl]
 		return
 	}
 
@@ -323,8 +321,6 @@ func (fut *Future) send(body func(*msgpack.Encoder) error) *Future {
 		fut.conn.fetchFuture(fut.requestId)
 		return fut
 	}
-
-	fut.conn.packets <- struct{}{}
 
 	return fut
 }
