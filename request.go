@@ -23,23 +23,6 @@ type Future struct {
 
 func (conn *Connection) newFuture(requestCode int32) (fut *Future) {
 	fut = &Future{}
-	if conn.opts.Timeout != 0 {
-		select {
-		case conn.rlimit <- struct{}{}:
-		default:
-			t := time.NewTimer(conn.opts.Timeout / 2)
-			select {
-			case conn.rlimit <- struct{}{}:
-				t.Stop()
-			case <-t.C:
-				fut.err = fmt.Errorf("client timeout for request %d", fut.requestId)
-				return fut
-			}
-		}
-	} else {
-		conn.rlimit <- struct{}{}
-	}
-
 	fut.conn = conn
 	fut.requestId = conn.nextRequestId()
 	fut.requestCode = requestCode
@@ -332,7 +315,6 @@ func (fut *Future) timeouted() {
 			panic("future doesn't match")
 		}
 		fut.err = fmt.Errorf("client timeout for request %d", fut.requestId)
-		<-conn.rlimit
 		close(fut.ready)
 	}
 }

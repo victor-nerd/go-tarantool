@@ -69,7 +69,6 @@ func Connect(addr string, opts Opts) (conn *Connection, err error) {
 		addr:       addr,
 		requestId:  0,
 		Greeting:   &Greeting{},
-		rlimit:     make(chan struct{}, 1024*1024),
 		dirtyShard: make(chan uint32, shards),
 		control:    make(chan struct{}),
 		opts:       opts,
@@ -270,7 +269,7 @@ func (conn *Connection) closeConnection(neterr error, r *bufio.Reader, w *bufio.
 			requests[pos] = nil
 			for fut != nil {
 				fut.err = neterr
-				<-conn.rlimit
+				//<-conn.rlimit
 				close(fut.ready)
 				fut, fut.next = fut.next, nil
 			}
@@ -363,7 +362,7 @@ func (conn *Connection) reader() {
 		}
 		if fut := conn.fetchFuture(resp.RequestId); fut != nil {
 			fut.resp = resp
-			<-conn.rlimit
+			//<-conn.rlimit
 			close(fut.ready)
 		} else {
 			log.Printf("tarantool: unexpected requestId (%d) in response", uint(resp.RequestId))
