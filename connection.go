@@ -354,7 +354,7 @@ func (conn *Connection) reader() {
 			r, _, _ = conn.closeConnection(err, r, nil)
 			continue
 		}
-		resp := Response{buf: smallBuf{b: respBytes}}
+		resp := &Response{buf: smallBuf{b: respBytes}}
 		err = resp.decodeHeader(conn.dec)
 		if err != nil {
 			r, _, _ = conn.closeConnection(err, r, nil)

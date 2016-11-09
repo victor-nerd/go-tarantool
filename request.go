@@ -10,7 +10,7 @@ type Future struct {
 	conn        *Connection
 	requestId   uint32
 	requestCode int32
-	resp        Response
+	resp        *Response
 	err         error
 	ready       chan struct{}
 	timeout     time.Duration
@@ -333,10 +333,10 @@ func (fut *Future) wait() {
 func (fut *Future) Get() (*Response, error) {
 	fut.wait()
 	if fut.err != nil {
-		return &fut.resp, fut.err
+		return fut.resp, fut.err
 	}
 	fut.err = fut.resp.decodeBody()
-	return &fut.resp, fut.err
+	return fut.resp, fut.err
 }
 
 func (fut *Future) GetTyped(result interface{}) error {
