@@ -27,7 +27,6 @@ type connShard struct {
 	bufmut   sync.Mutex
 	buf      smallWBuf
 	enc      *msgpack.Encoder
-	bcache   smallWBuf
 	_pad     [16]uint64
 }
 
@@ -305,6 +304,7 @@ func (conn *Connection) writer() {
 	var w *bufio.Writer
 	var err error
 	var shardn uint32
+	var packet smallWBuf
 Main:
 	for !conn.closed {
 		select {
@@ -330,16 +330,13 @@ Main:
 		}
 		shard := &conn.shard[shardn]
 		shard.bufmut.Lock()
-		packet := shard.buf
-		shard.buf = nil
+		packet, shard.buf = shard.buf, packet
 		shard.bufmut.Unlock()
 		if err := write(w, packet); err != nil {
 			_, w, _ = conn.closeConnection(err, nil, w)
 			continue Main
 		}
-		shard.bufmut.Lock()
-		shard.bcache = packet[0:0]
-		shard.bufmut.Unlock()
+		packet = packet[0:0]
 	}
 }
 
@@ -380,10 +377,7 @@ func (conn *Connection) putFuture(fut *Future, body func(*msgpack.Encoder) error
 	shard.bufmut.Lock()
 	firstWritten := len(shard.buf) == 0
 	if cap(shard.buf) == 0 {
-		shard.buf, shard.bcache = shard.bcache, nil
-		if cap(shard.buf) == 0 {
-			shard.buf = make(smallWBuf, 0, 128)
-		}
+		shard.buf = make(smallWBuf, 0, 128)
 		shard.enc = msgpack.NewEncoder(&shard.buf)
 	}
 	blen := len(shard.buf)
