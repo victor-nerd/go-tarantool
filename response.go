@@ -17,6 +17,18 @@ func (resp *Response) fill(b []byte) {
 	resp.buf.b = b
 }
 
+func (resp *Response) smallInt(d *msgpack.Decoder) (i int, err error) {
+	b, err := resp.buf.ReadByte()
+	if err != nil {
+		return
+	}
+	if b <= 127 {
+		return int(b), nil
+	}
+	resp.buf.UnreadByte()
+	return d.DecodeInt()
+}
+
 func (resp *Response) decodeHeader(d *msgpack.Decoder) (err error) {
 	var l int
 	d.Reset(&resp.buf)
@@ -25,7 +37,7 @@ func (resp *Response) decodeHeader(d *msgpack.Decoder) (err error) {
 	}
 	for ; l > 0; l-- {
 		var cd int
-		if cd, err = d.DecodeInt(); err != nil {
+		if cd, err = resp.smallInt(d); err != nil {
 			return
 		}
 		switch cd {
@@ -52,16 +64,35 @@ func (resp *Response) decodeHeader(d *msgpack.Decoder) (err error) {
 
 func (resp *Response) decodeBody() (err error) {
 	if resp.buf.Len() > 2 {
-		var body map[int]interface{}
+		var l int
 		d := msgpack.NewDecoder(&resp.buf)
-		if err = d.Decode(&body); err != nil {
+		if l, err = d.DecodeMapLen(); err != nil {
 			return err
 		}
-		if body[KeyData] != nil {
-			resp.Data = body[KeyData].([]interface{})
-		}
-		if body[KeyError] != nil {
-			resp.Error = body[KeyError].(string)
+		for ; l > 0; l-- {
+			var cd int
+			if cd, err = resp.smallInt(d); err != nil {
+				return err
+			}
+			switch cd {
+			case KeyData:
+				var res interface{}
+				var ok bool
+				if res, err = d.DecodeInterface(); err != nil {
+					return err
+				}
+				if resp.Data, ok = res.([]interface{}); !ok {
+					return fmt.Errorf("result is not array: %v", res)
+				}
+			case KeyError:
+				if resp.Error, err = d.DecodeString(); err != nil {
+					return err
+				}
+			default:
+				if err = d.Skip(); err != nil {
+					return err
+				}
+			}
 		}
 		if resp.Code != OkCode {
 			resp.Code &^= ErrorCodeBit
@@ -80,7 +111,7 @@ func (resp *Response) decodeBodyTyped(res interface{}) (err error) {
 		}
 		for ; l > 0; l-- {
 			var cd int
-			if cd, err = d.DecodeInt(); err != nil {
+			if cd, err = resp.smallInt(d); err != nil {
 				return err
 			}
 			switch cd {

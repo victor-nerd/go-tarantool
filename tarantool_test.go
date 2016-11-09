@@ -28,6 +28,10 @@ type Tuple2 struct {
 	Members []Member
 }
 
+type IntKey struct {
+	id uint
+}
+
 func encodeTuple(e *msgpack.Encoder, v reflect.Value) error {
 	t := v.Interface().(Tuple)
 	if err := e.EncodeSliceLen(3); err != nil {
@@ -146,6 +150,12 @@ func decodeTuple2(d *msgpack.Decoder, v reflect.Value) error {
 	return nil
 }
 
+func (k IntKey) EncodeMsgpack(enc *msgpack.Encoder) error {
+	enc.EncodeSliceLen(1)
+	enc.EncodeUint(k.id)
+	return nil
+}
+
 func init() {
 	msgpack.Register(reflect.TypeOf(Tuple{}), encodeTuple, decodeTuple)
 	msgpack.Register(reflect.TypeOf(Tuple2{}), encodeTuple2, decodeTuple2)
@@ -232,7 +242,7 @@ func BenchmarkClientFutureTyped(b *testing.B) {
 	for i := 0; i < b.N; i += N {
 		var fs [N]*Future
 		for j := 0; j < N; j++ {
-			fs[j] = conn.SelectAsync(spaceNo, indexNo, 0, 1, IterEq, []interface{}{uint(1111)})
+			fs[j] = conn.SelectAsync(spaceNo, indexNo, 0, 1, IterEq, IntKey{1111})
 		}
 		for j := 0; j < N; j++ {
 			var r []Tuple
@@ -304,7 +314,7 @@ func BenchmarkClientFutureParallelTyped(b *testing.B) {
 			var fs [N]*Future
 			var j int
 			for j = 0; j < N && pb.Next(); j++ {
-				fs[j] = conn.SelectAsync(spaceNo, indexNo, 0, 1, IterEq, []interface{}{uint(1111)})
+				fs[j] = conn.SelectAsync(spaceNo, indexNo, 0, 1, IterEq, IntKey{1111})
 			}
 			exit = j < N
 			for j > 0 {
@@ -368,8 +378,7 @@ func BenchmarkClientParallelMassive(b *testing.B) {
 		limit <- struct{}{}
 		go func() {
 			var r []Tuple
-			err = conn.SelectTyped(spaceNo, indexNo, 0, 1, IterEq, []interface{}{uint(1111)}, &r)
-			//_, err = conn.Select(spaceNo, indexNo, 0, 1, IterEq, []interface{}{uint(1111)})
+			err = conn.SelectTyped(spaceNo, indexNo, 0, 1, IterEq, IntKey{1111}, &r)
 			<-limit
 			wg.Done()
 			if err != nil {

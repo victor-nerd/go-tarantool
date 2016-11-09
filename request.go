@@ -34,7 +34,7 @@ func (conn *Connection) Ping() (resp *Response, err error) {
 	return future.send(func(enc *msgpack.Encoder) error { enc.EncodeMapLen(0); return nil }).Get()
 }
 
-func (req *Future) fillSearch(enc *msgpack.Encoder, spaceNo, indexNo uint32, key []interface{}) error {
+func (req *Future) fillSearch(enc *msgpack.Encoder, spaceNo, indexNo uint32, key interface{}) error {
 	enc.EncodeUint64(KeySpaceNo)
 	enc.EncodeUint64(uint64(spaceNo))
 	enc.EncodeUint64(KeyIndexNo)
@@ -59,7 +59,7 @@ func (req *Future) fillInsert(enc *msgpack.Encoder, spaceNo uint32, tuple interf
 	return enc.Encode(tuple)
 }
 
-func (conn *Connection) Select(space, index interface{}, offset, limit, iterator uint32, key []interface{}) (resp *Response, err error) {
+func (conn *Connection) Select(space, index interface{}, offset, limit, iterator uint32, key interface{}) (resp *Response, err error) {
 	return conn.SelectAsync(space, index, offset, limit, iterator, key).Get()
 }
 
@@ -71,36 +71,36 @@ func (conn *Connection) Replace(space interface{}, tuple interface{}) (resp *Res
 	return conn.ReplaceAsync(space, tuple).Get()
 }
 
-func (conn *Connection) Delete(space, index interface{}, key []interface{}) (resp *Response, err error) {
+func (conn *Connection) Delete(space, index interface{}, key interface{}) (resp *Response, err error) {
 	return conn.DeleteAsync(space, index, key).Get()
 }
 
-func (conn *Connection) Update(space, index interface{}, key, ops []interface{}) (resp *Response, err error) {
+func (conn *Connection) Update(space, index interface{}, key, ops interface{}) (resp *Response, err error) {
 	return conn.UpdateAsync(space, index, key, ops).Get()
 }
 
-func (conn *Connection) Upsert(space interface{}, tuple, ops []interface{}) (resp *Response, err error) {
+func (conn *Connection) Upsert(space interface{}, tuple, ops interface{}) (resp *Response, err error) {
 	return conn.UpsertAsync(space, tuple, ops).Get()
 }
 
 // Call calls registered function.
 // It uses request code for tarantool 1.6, so result is converted to array of arrays
-func (conn *Connection) Call(functionName string, args []interface{}) (resp *Response, err error) {
+func (conn *Connection) Call(functionName string, args interface{}) (resp *Response, err error) {
 	return conn.CallAsync(functionName, args).Get()
 }
 
 // Call17 calls registered function.
 // It uses request code for tarantool 1.7, so result is not converted
 // (though, keep in mind, result is always array)
-func (conn *Connection) Call17(functionName string, args []interface{}) (resp *Response, err error) {
+func (conn *Connection) Call17(functionName string, args interface{}) (resp *Response, err error) {
 	return conn.Call17Async(functionName, args).Get()
 }
 
-func (conn *Connection) Eval(expr string, args []interface{}) (resp *Response, err error) {
+func (conn *Connection) Eval(expr string, args interface{}) (resp *Response, err error) {
 	return conn.EvalAsync(expr, args).Get()
 }
 
-func (conn *Connection) SelectTyped(space, index interface{}, offset, limit, iterator uint32, key []interface{}, result interface{}) (err error) {
+func (conn *Connection) SelectTyped(space, index interface{}, offset, limit, iterator uint32, key interface{}, result interface{}) (err error) {
 	return conn.SelectAsync(space, index, offset, limit, iterator, key).GetTyped(result)
 }
 
@@ -112,33 +112,37 @@ func (conn *Connection) ReplaceTyped(space interface{}, tuple interface{}, resul
 	return conn.ReplaceAsync(space, tuple).GetTyped(result)
 }
 
-func (conn *Connection) DeleteTyped(space, index interface{}, key []interface{}, result interface{}) (err error) {
+func (conn *Connection) DeleteTyped(space, index interface{}, key interface{}, result interface{}) (err error) {
 	return conn.DeleteAsync(space, index, key).GetTyped(result)
 }
 
-func (conn *Connection) UpdateTyped(space, index interface{}, key, ops []interface{}, result interface{}) (err error) {
+func (conn *Connection) UpdateTyped(space, index interface{}, key, ops interface{}, result interface{}) (err error) {
 	return conn.UpdateAsync(space, index, key, ops).GetTyped(result)
 }
 
 // CallTyped calls registered function.
 // It uses request code for tarantool 1.6, so result is converted to array of arrays
-func (conn *Connection) CallTyped(functionName string, args []interface{}, result interface{}) (err error) {
+// Attention: args should serialize into array of arguments
+func (conn *Connection) CallTyped(functionName string, args interface{}, result interface{}) (err error) {
 	return conn.CallAsync(functionName, args).GetTyped(result)
 }
 
 // Call17Typed calls registered function.
 // It uses request code for tarantool 1.7, so result is not converted
 // (though, keep in mind, result is always array)
-func (conn *Connection) Call17Typed(functionName string, args []interface{}, result interface{}) (err error) {
+// Attention: args should serialize into array of arguments
+func (conn *Connection) Call17Typed(functionName string, args interface{}, result interface{}) (err error) {
 	return conn.Call17Async(functionName, args).GetTyped(result)
 }
 
-func (conn *Connection) EvalTyped(expr string, args []interface{}, result interface{}) (err error) {
+// EvalTyped evals arbitrary lua expression
+// Attention: args should serialize into array of arguments
+func (conn *Connection) EvalTyped(expr string, args interface{}, result interface{}) (err error) {
 	return conn.EvalAsync(expr, args).GetTyped(result)
 }
 
 // Async methods
-func (conn *Connection) SelectAsync(space, index interface{}, offset, limit, iterator uint32, key []interface{}) *Future {
+func (conn *Connection) SelectAsync(space, index interface{}, offset, limit, iterator uint32, key interface{}) *Future {
 	future := conn.newFuture(SelectRequest)
 	spaceNo, indexNo, err := conn.Schema.resolveSpaceIndex(space, index)
 	if err != nil {
@@ -175,7 +179,7 @@ func (conn *Connection) ReplaceAsync(space interface{}, tuple interface{}) *Futu
 	})
 }
 
-func (conn *Connection) DeleteAsync(space, index interface{}, key []interface{}) *Future {
+func (conn *Connection) DeleteAsync(space, index interface{}, key interface{}) *Future {
 	future := conn.newFuture(DeleteRequest)
 	spaceNo, indexNo, err := conn.Schema.resolveSpaceIndex(space, index)
 	if err != nil {
@@ -187,7 +191,7 @@ func (conn *Connection) DeleteAsync(space, index interface{}, key []interface{})
 	})
 }
 
-func (conn *Connection) UpdateAsync(space, index interface{}, key, ops []interface{}) *Future {
+func (conn *Connection) UpdateAsync(space, index interface{}, key, ops interface{}) *Future {
 	future := conn.newFuture(UpdateRequest)
 	spaceNo, indexNo, err := conn.Schema.resolveSpaceIndex(space, index)
 	if err != nil {
@@ -203,7 +207,7 @@ func (conn *Connection) UpdateAsync(space, index interface{}, key, ops []interfa
 	})
 }
 
-func (conn *Connection) UpsertAsync(space interface{}, tuple interface{}, ops []interface{}) *Future {
+func (conn *Connection) UpsertAsync(space interface{}, tuple interface{}, ops interface{}) *Future {
 	future := conn.newFuture(UpsertRequest)
 	spaceNo, _, err := conn.Schema.resolveSpaceIndex(space, nil)
 	if err != nil {
@@ -222,7 +226,7 @@ func (conn *Connection) UpsertAsync(space interface{}, tuple interface{}, ops []
 	})
 }
 
-func (conn *Connection) CallAsync(functionName string, args []interface{}) *Future {
+func (conn *Connection) CallAsync(functionName string, args interface{}) *Future {
 	future := conn.newFuture(CallRequest)
 	return future.send(func(enc *msgpack.Encoder) error {
 		enc.EncodeMapLen(2)
@@ -233,7 +237,7 @@ func (conn *Connection) CallAsync(functionName string, args []interface{}) *Futu
 	})
 }
 
-func (conn *Connection) Call17Async(functionName string, args []interface{}) *Future {
+func (conn *Connection) Call17Async(functionName string, args interface{}) *Future {
 	future := conn.newFuture(Call17Request)
 	return future.send(func(enc *msgpack.Encoder) error {
 		enc.EncodeMapLen(2)
@@ -244,7 +248,7 @@ func (conn *Connection) Call17Async(functionName string, args []interface{}) *Fu
 	})
 }
 
-func (conn *Connection) EvalAsync(expr string, args []interface{}) *Future {
+func (conn *Connection) EvalAsync(expr string, args interface{}) *Future {
 	future := conn.newFuture(EvalRequest)
 	return future.send(func(enc *msgpack.Encoder) error {
 		enc.EncodeMapLen(2)
