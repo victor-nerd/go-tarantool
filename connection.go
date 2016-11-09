@@ -43,7 +43,6 @@ type Connection struct {
 	shard      [shards]connShard
 	dirtyShard chan uint32
 
-	rlimit  chan struct{}
 	control chan struct{}
 	opts    Opts
 	closed  bool
@@ -269,7 +268,6 @@ func (conn *Connection) closeConnection(neterr error, r *bufio.Reader, w *bufio.
 			requests[pos] = nil
 			for fut != nil {
 				fut.err = neterr
-				//<-conn.rlimit
 				close(fut.ready)
 				fut, fut.next = fut.next, nil
 			}
@@ -362,7 +360,6 @@ func (conn *Connection) reader() {
 		}
 		if fut := conn.fetchFuture(resp.RequestId); fut != nil {
 			fut.resp = resp
-			//<-conn.rlimit
 			close(fut.ready)
 		} else {
 			log.Printf("tarantool: unexpected requestId (%d) in response", uint(resp.RequestId))
