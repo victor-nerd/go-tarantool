@@ -47,6 +47,7 @@ type Connection struct {
 	opts    Opts
 	closed  bool
 	dec     *msgpack.Decoder
+	lenbuf [PacketLengthBytes]byte
 }
 
 type Greeting struct {
@@ -188,7 +189,7 @@ func (conn *Connection) writeAuthRequest(w *bufio.Writer, scramble []byte) (err 
 }
 
 func (conn *Connection) readAuthResponse(r io.Reader) (err error) {
-	respBytes, err := read(r)
+	respBytes, err := conn.read(r)
 	if err != nil {
 		return errors.New("auth: read error " + err.Error())
 	}
@@ -349,7 +350,7 @@ func (conn *Connection) reader() {
 				return
 			}
 		}
-		respBytes, err := read(r)
+		respBytes, err := conn.read(r)
 		if err != nil {
 			r, _, _ = conn.closeConnection(err, r, nil)
 			continue
@@ -513,21 +514,20 @@ func write(w io.Writer, data []byte) (err error) {
 	return
 }
 
-func read(r io.Reader) (response []byte, err error) {
-	var lenbuf [PacketLengthBytes]byte
+func (conn *Connection) read(r io.Reader) (response []byte, err error) {
 	var length int
 
-	if _, err = io.ReadFull(r, lenbuf[:]); err != nil {
+	if _, err = io.ReadFull(r, conn.lenbuf[:]); err != nil {
 		return
 	}
-	if lenbuf[0] != 0xce {
+	if conn.lenbuf[0] != 0xce {
 		err = errors.New("Wrong reponse header")
 		return
 	}
-	length = (int(lenbuf[1]) << 24) +
-		(int(lenbuf[2]) << 16) +
-		(int(lenbuf[3]) << 8) +
-		int(lenbuf[4])
+	length = (int(conn.lenbuf[1]) << 24) +
+		(int(conn.lenbuf[2]) << 16) +
+		(int(conn.lenbuf[3]) << 8) +
+		int(conn.lenbuf[4])
 
 	if length == 0 {
 		err = errors.New("Response should not be 0 length")
