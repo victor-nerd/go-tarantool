@@ -14,8 +14,8 @@ import (
 	"time"
 )
 
-const shards = 128
-const requestsMap = 128
+const shards = 512
+const requestsMap = 16
 
 var epoch = time.Now()
 
@@ -30,14 +30,13 @@ type Connection struct {
 	Greeting  *Greeting
 	shard     [shards]struct {
 		sync.Mutex
-		requests []*Future
+		count    uint32
+		requests [requestsMap]*Future
 		first    *Future
 		last     **Future
 		buf      smallWBuf
-		bcache   smallWBuf
 		enc      *msgpack.Encoder
-		count    uint32
-		_pad     [3]uint64
+		bcache   smallWBuf
 	}
 	rlimit  chan struct{}
 	packets chan struct{}
@@ -74,7 +73,6 @@ func Connect(addr string, opts Opts) (conn *Connection, err error) {
 	}
 	for i := range conn.shard {
 		conn.shard[i].last = &conn.shard[i].first
-		conn.shard[i].requests = make([]*Future, requestsMap)
 	}
 
 	var reconnect time.Duration
