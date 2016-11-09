@@ -22,11 +22,28 @@ type Future struct {
 }
 
 func (conn *Connection) newFuture(requestCode int32) (fut *Future) {
-	return &Future{
-		conn:        conn,
-		requestId:   conn.nextRequestId(),
-		requestCode: requestCode,
+	fut = &Future{}
+	if conn.opts.Timeout != 0 {
+		select {
+		case conn.rlimit <- struct{}{}:
+		default:
+			t := time.NewTimer(conn.opts.Timeout / 2)
+			select {
+			case conn.rlimit <- struct{}{}:
+				t.Stop()
+			case <-t.C:
+				fut.err = fmt.Errorf("client timeout for request %d", fut.requestId)
+				return fut
+			}
+		}
+	} else {
+		conn.rlimit <- struct{}{}
 	}
+
+	fut.conn = conn
+	fut.requestId = conn.nextRequestId()
+	fut.requestCode = requestCode
+	return
 }
 
 func (conn *Connection) Ping() (resp *Response, err error) {
@@ -259,10 +276,11 @@ func (conn *Connection) EvalAsync(expr string, args []interface{}) *Future {
 // private
 //
 
-func (fut *Future) pack(body func(*msgpack.Encoder) error) (packet []byte, err error) {
+func (fut *Future) pack(h *smallWBuf, enc *msgpack.Encoder, body func(*msgpack.Encoder) error) (err error) {
 	rid := fut.requestId
-	h := make(smallWBuf, 0, 48)
-	h = append(h, smallWBuf{
+	//h := make(smallWBuf, 0, 48)
+	hl := len(*h)
+	*h = append(*h, smallWBuf{
 		0xce, 0, 0, 0, 0, // length
 		0x82,                           // 2 element map
 		KeyCode, byte(fut.requestCode), // request code
@@ -271,23 +289,24 @@ func (fut *Future) pack(body func(*msgpack.Encoder) error) (packet []byte, err e
 		byte(rid >> 8), byte(rid),
 	}...)
 
-	enc := msgpack.NewEncoder(&h)
 	if err = body(enc); err != nil {
+		*h = (*h)[:hl]
 		return
 	}
 
-	l := uint32(len(h) - 5)
-	h[1] = byte(l >> 24)
-	h[2] = byte(l >> 16)
-	h[3] = byte(l >> 8)
-	h[4] = byte(l)
+	l := uint32(len(*h) - 5 - hl)
+	(*h)[hl+1] = byte(l >> 24)
+	(*h)[hl+2] = byte(l >> 16)
+	(*h)[hl+3] = byte(l >> 8)
+	(*h)[hl+4] = byte(l)
 
-	packet = h
 	return
 }
 
 func (fut *Future) send(body func(*msgpack.Encoder) error) *Future {
-
+	if fut.err != nil {
+		return fut
+	}
 	// check connection ready to process packets
 	if closed := fut.conn.closed; closed {
 		fut.err = ClientError{ErrConnectionClosed, "using closed connection"}
@@ -298,28 +317,14 @@ func (fut *Future) send(body func(*msgpack.Encoder) error) *Future {
 		return fut
 	}
 
-	var packet []byte
-	if packet, fut.err = fut.pack(body); fut.err != nil {
-		return fut
-	}
-
 	fut.ready = make(chan struct{})
-	fut.conn.putFuture(fut)
+	fut.conn.putFuture(fut, body)
 	if fut.err != nil {
 		fut.conn.fetchFuture(fut.requestId)
 		return fut
 	}
 
-	select {
-	case fut.conn.packets <- (packet):
-	default:
-		// if connection is totally closed, then fut.conn.packets will be full
-		// if connection is busy, we can reach timeout
-		select {
-		case fut.conn.packets <- (packet):
-		case <-fut.ready:
-		}
-	}
+	fut.conn.packets <- struct{}{}
 
 	return fut
 }
@@ -331,6 +336,7 @@ func (fut *Future) timeouted() {
 			panic("future doesn't match")
 		}
 		fut.err = fmt.Errorf("client timeout for request %d", fut.requestId)
+		<-conn.rlimit
 		close(fut.ready)
 	}
 }

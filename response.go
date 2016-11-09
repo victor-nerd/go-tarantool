@@ -17,15 +17,9 @@ func (resp *Response) fill(b []byte) {
 	resp.buf.b = b
 }
 
-func newResponse(b []byte) (resp *Response, err error) {
-	resp = &Response{buf: smallBuf{b: b}}
-	err = resp.decodeHeader()
-	return
-}
-
-func (resp *Response) decodeHeader() (err error) {
+func (resp *Response) decodeHeader(d *msgpack.Decoder) (err error) {
 	var l int
-	d := msgpack.NewDecoder(&resp.buf)
+	d.Reset(&resp.buf)
 	if l, err = d.DecodeMapLen(); err != nil {
 		return
 	}
@@ -36,13 +30,17 @@ func (resp *Response) decodeHeader() (err error) {
 		}
 		switch cd {
 		case KeySync:
-			if resp.RequestId, err = d.DecodeUint32(); err != nil {
+			var rid uint64
+			if rid, err = d.DecodeUint64(); err != nil {
 				return
 			}
+			resp.RequestId = uint32(rid)
 		case KeyCode:
-			if resp.Code, err = d.DecodeUint32(); err != nil {
+			var rcode uint64
+			if rcode, err = d.DecodeUint64(); err != nil {
 				return
 			}
+			resp.Code = uint32(rcode)
 		default:
 			if err = d.Skip(); err != nil {
 				return
