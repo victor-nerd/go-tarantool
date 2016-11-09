@@ -310,7 +310,6 @@ func (conn *Connection) writer() {
 	var err error
 	var shardn uint32
 	var packet smallWBuf
-Main:
 	for !conn.closed {
 		select {
 		case shardn = <-conn.dirtyShard:
