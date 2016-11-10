@@ -167,7 +167,13 @@ var spaceNo = uint32(512)
 var spaceName = "test"
 var indexNo = uint32(0)
 var indexName = "primary"
-var opts = Opts{Timeout: 5000 * time.Millisecond, User: "test", Pass: "test"}
+var opts = Opts{
+	Timeout: 5000 * time.Millisecond,
+	User: "test",
+	Pass: "test",
+	//Concurrency: 32,
+	//RateLimit: 4*1024,
+}
 
 const N = 500
 
@@ -175,11 +181,11 @@ func BenchmarkClientSerial(b *testing.B) {
 	var err error
 
 	conn, err := Connect(server, opts)
-	defer conn.Close()
 	if err != nil {
 		b.Errorf("No connection available")
 		return
 	}
+	defer conn.Close()
 
 	_, err = conn.Replace(spaceNo, []interface{}{uint(1111), "hello", "world"})
 	if err != nil {
@@ -198,11 +204,11 @@ func BenchmarkClientFuture(b *testing.B) {
 	var err error
 
 	conn, err := Connect(server, opts)
-	defer conn.Close()
 	if err != nil {
 		b.Error(err)
 		return
 	}
+	defer conn.Close()
 
 	_, err = conn.Replace(spaceNo, []interface{}{uint(1111), "hello", "world"})
 	if err != nil {
@@ -228,11 +234,11 @@ func BenchmarkClientFutureTyped(b *testing.B) {
 	var err error
 
 	conn, err := Connect(server, opts)
-	defer conn.Close()
 	if err != nil {
 		b.Errorf("No connection available")
 		return
 	}
+	defer conn.Close()
 
 	_, err = conn.Replace(spaceNo, []interface{}{uint(1111), "hello", "world"})
 	if err != nil {
@@ -261,11 +267,11 @@ func BenchmarkClientFutureParallel(b *testing.B) {
 	var err error
 
 	conn, err := Connect(server, opts)
-	defer conn.Close()
 	if err != nil {
 		b.Errorf("No connection available")
 		return
 	}
+	defer conn.Close()
 
 	_, err = conn.Replace(spaceNo, []interface{}{uint(1111), "hello", "world"})
 	if err != nil {
@@ -297,11 +303,11 @@ func BenchmarkClientFutureParallelTyped(b *testing.B) {
 	var err error
 
 	conn, err := Connect(server, opts)
-	defer conn.Close()
 	if err != nil {
 		b.Errorf("No connection available")
 		return
 	}
+	defer conn.Close()
 
 	_, err = conn.Replace(spaceNo, []interface{}{uint(1111), "hello", "world"})
 	if err != nil {
@@ -317,8 +323,8 @@ func BenchmarkClientFutureParallelTyped(b *testing.B) {
 				fs[j] = conn.SelectAsync(spaceNo, indexNo, 0, 1, IterEq, IntKey{1111})
 			}
 			exit = j < N
+			var r []Tuple
 			for j > 0 {
-				var r []Tuple
 				j--
 				err := fs[j].GetTyped(&r)
 				if err != nil {
@@ -336,11 +342,11 @@ func BenchmarkClientFutureParallelTyped(b *testing.B) {
 
 func BenchmarkClientParallel(b *testing.B) {
 	conn, err := Connect(server, opts)
-	defer conn.Close()
 	if err != nil {
 		b.Errorf("No connection available")
 		return
 	}
+	defer conn.Close()
 
 	_, err = conn.Replace(spaceNo, []interface{}{uint(1111), "hello", "world"})
 	if err != nil {
@@ -360,11 +366,11 @@ func BenchmarkClientParallel(b *testing.B) {
 
 func BenchmarkClientParallelMassive(b *testing.B) {
 	conn, err := Connect(server, opts)
-	defer conn.Close()
 	if err != nil {
 		b.Errorf("No connection available")
 		return
 	}
+	defer conn.Close()
 
 	_, err = conn.Replace(spaceNo, []interface{}{uint(1111), "hello", "world"})
 	if err != nil {
@@ -404,7 +410,6 @@ func TestClient(t *testing.T) {
 	var conn *Connection
 
 	conn, err = Connect(server, opts)
-	defer conn.Close()
 	if err != nil {
 		t.Errorf("Failed to connect: %s", err.Error())
 		return
@@ -413,6 +418,7 @@ func TestClient(t *testing.T) {
 		t.Errorf("conn is nil after Connect")
 		return
 	}
+	defer conn.Close()
 
 	// Ping
 	resp, err = conn.Ping()
@@ -674,7 +680,6 @@ func TestSchema(t *testing.T) {
 	var conn *Connection
 
 	conn, err = Connect(server, opts)
-	defer conn.Close()
 	if err != nil {
 		t.Errorf("Failed to connect: %s", err.Error())
 		return
@@ -683,6 +688,7 @@ func TestSchema(t *testing.T) {
 		t.Errorf("conn is nil after Connect")
 		return
 	}
+	defer conn.Close()
 
 	// Schema
 	schema := conn.Schema
@@ -858,7 +864,6 @@ func TestClientNamed(t *testing.T) {
 	var conn *Connection
 
 	conn, err = Connect(server, opts)
-	defer conn.Close()
 	if err != nil {
 		t.Errorf("Failed to connect: %s", err.Error())
 		return
@@ -867,6 +872,7 @@ func TestClientNamed(t *testing.T) {
 		t.Errorf("conn is nil after Connect")
 		return
 	}
+	defer conn.Close()
 
 	// Insert
 	resp, err = conn.Insert(spaceName, []interface{}{uint(1001), "hello2", "world2"})
@@ -950,7 +956,6 @@ func TestComplexStructs(t *testing.T) {
 	var conn *Connection
 
 	conn, err = Connect(server, opts)
-	defer conn.Close()
 	if err != nil {
 		t.Errorf("Failed to connect: %s", err.Error())
 		return
@@ -959,6 +964,7 @@ func TestComplexStructs(t *testing.T) {
 		t.Errorf("conn is nil after Connect")
 		return
 	}
+	defer conn.Close()
 
 	tuple := Tuple2{777, "orig", []Member{{"lol", "", 1}, {"wut", "", 3}}}
 	_, err = conn.Replace(spaceNo, tuple)

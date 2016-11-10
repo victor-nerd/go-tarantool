@@ -1,7 +1,6 @@
 package tarantool
 
 import (
-	"fmt"
 	"gopkg.in/vmihailenco/msgpack.v2"
 	"time"
 )
@@ -15,18 +14,6 @@ type Future struct {
 	ready       chan struct{}
 	timeout     time.Duration
 	next        *Future
-	time        struct {
-		next *Future
-		prev **Future
-	}
-}
-
-func (conn *Connection) newFuture(requestCode int32) (fut *Future) {
-	fut = &Future{}
-	fut.conn = conn
-	fut.requestId = conn.nextRequestId()
-	fut.requestCode = requestCode
-	return
 }
 
 func (conn *Connection) Ping() (resp *Response, err error) {
@@ -302,7 +289,6 @@ func (fut *Future) send(body func(*msgpack.Encoder) error) *Future {
 		return fut
 	}
 
-	fut.ready = make(chan struct{})
 	fut.conn.putFuture(fut, body)
 	if fut.err != nil {
 		fut.conn.fetchFuture(fut.requestId)
@@ -312,14 +298,10 @@ func (fut *Future) send(body func(*msgpack.Encoder) error) *Future {
 	return fut
 }
 
-func (fut *Future) timeouted() {
-	conn := fut.conn
-	if f := conn.fetchFuture(fut.requestId); f != nil {
-		if f != fut {
-			panic("future doesn't match")
-		}
-		fut.err = fmt.Errorf("client timeout for request %d", fut.requestId)
-		close(fut.ready)
+func (fut *Future) markReady() {
+	close(fut.ready)
+	if fut.conn.rlimit != nil {
+		<-fut.conn.rlimit
 	}
 }
 
