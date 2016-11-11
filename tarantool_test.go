@@ -3,7 +3,6 @@ package tarantool
 import (
 	"fmt"
 	"gopkg.in/vmihailenco/msgpack.v2"
-	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -32,8 +31,7 @@ type IntKey struct {
 	id uint
 }
 
-func encodeTuple(e *msgpack.Encoder, v reflect.Value) error {
-	t := v.Interface().(Tuple)
+func (t *Tuple) EncodeMsgpack(e *msgpack.Encoder) error {
 	if err := e.EncodeSliceLen(3); err != nil {
 		return err
 	}
@@ -49,10 +47,9 @@ func encodeTuple(e *msgpack.Encoder, v reflect.Value) error {
 	return nil
 }
 
-func decodeTuple(d *msgpack.Decoder, v reflect.Value) error {
+func (t *Tuple) DecodeMsgpack(d *msgpack.Decoder) error {
 	var err error
 	var l int
-	t := v.Addr().Interface().(*Tuple)
 	if l, err = d.DecodeSliceLen(); err != nil {
 		return err
 	}
@@ -71,8 +68,7 @@ func decodeTuple(d *msgpack.Decoder, v reflect.Value) error {
 	return nil
 }
 
-func encodeMember(e *msgpack.Encoder, v reflect.Value) error {
-	m := v.Interface().(Member)
+func (m *Member) EncodeMsgpack(e *msgpack.Encoder) error {
 	if err := e.EncodeSliceLen(2); err != nil {
 		return err
 	}
@@ -85,10 +81,9 @@ func encodeMember(e *msgpack.Encoder, v reflect.Value) error {
 	return nil
 }
 
-func decodeMember(d *msgpack.Decoder, v reflect.Value) error {
+func (m *Member) DecodeMsgpack(d *msgpack.Decoder) error {
 	var err error
 	var l int
-	m := v.Addr().Interface().(*Member)
 	if l, err = d.DecodeSliceLen(); err != nil {
 		return err
 	}
@@ -104,8 +99,7 @@ func decodeMember(d *msgpack.Decoder, v reflect.Value) error {
 	return nil
 }
 
-func encodeTuple2(e *msgpack.Encoder, v reflect.Value) error {
-	c := v.Interface().(Tuple2)
+func (c *Tuple2) EncodeMsgpack(e *msgpack.Encoder) error {
 	if err := e.EncodeSliceLen(3); err != nil {
 		return err
 	}
@@ -115,19 +109,15 @@ func encodeTuple2(e *msgpack.Encoder, v reflect.Value) error {
 	if err := e.EncodeString(c.Orig); err != nil {
 		return err
 	}
-	if err := e.EncodeSliceLen(len(c.Members)); err != nil {
+	if err := e.Encode(c.Members); err != nil {
 		return err
-	}
-	for _, m := range c.Members {
-		e.Encode(m)
 	}
 	return nil
 }
 
-func decodeTuple2(d *msgpack.Decoder, v reflect.Value) error {
+func (c *Tuple2) DecodeMsgpack(d *msgpack.Decoder) error {
 	var err error
 	var l int
-	c := v.Addr().Interface().(*Tuple2)
 	if l, err = d.DecodeSliceLen(); err != nil {
 		return err
 	}
@@ -154,12 +144,6 @@ func (k IntKey) EncodeMsgpack(enc *msgpack.Encoder) error {
 	enc.EncodeSliceLen(1)
 	enc.EncodeUint(k.id)
 	return nil
-}
-
-func init() {
-	msgpack.Register(reflect.TypeOf(Tuple{}), encodeTuple, decodeTuple)
-	msgpack.Register(reflect.TypeOf(Tuple2{}), encodeTuple2, decodeTuple2)
-	msgpack.Register(reflect.TypeOf(Member{}), encodeMember, decodeMember)
 }
 
 var server = "127.0.0.1:3013"
@@ -967,7 +951,7 @@ func TestComplexStructs(t *testing.T) {
 	defer conn.Close()
 
 	tuple := Tuple2{777, "orig", []Member{{"lol", "", 1}, {"wut", "", 3}}}
-	_, err = conn.Replace(spaceNo, tuple)
+	_, err = conn.Replace(spaceNo, &tuple)
 	if err != nil {
 		t.Errorf("Failed to insert: %s", err.Error())
 		return
