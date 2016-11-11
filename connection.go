@@ -114,7 +114,9 @@ func Connect(addr string, opts Opts) (conn *Connection, err error) {
 
 	go conn.writer()
 	go conn.reader()
-	go conn.timeouts()
+	if conn.opts.Timeout > 0 {
+		go conn.timeouts()
+	}
 
 	// TODO: reload schema after reconnect
 	if err = conn.loadSchema(); err != nil {
@@ -519,9 +521,6 @@ func (conn *Connection) fetchFutureImp(reqid uint32) *Future {
 
 func (conn *Connection) timeouts() {
 	timeout := conn.opts.Timeout
-	if timeout == 0 {
-		timeout = time.Second
-	}
 	t := time.NewTimer(timeout)
 	for {
 		var nowepoch time.Duration
