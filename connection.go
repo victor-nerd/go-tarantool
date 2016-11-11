@@ -21,7 +21,10 @@ var epoch = time.Now()
 
 type connShard struct {
 	rmut     sync.Mutex
-	requests [requestsMap]struct{ first, last *Future }
+	requests [requestsMap]struct{
+		first *Future
+		last **Future
+	}
 	bufmut   sync.Mutex
 	buf      smallWBuf
 	enc      *msgpack.Encoder
@@ -102,6 +105,12 @@ func Connect(addr string, opts Opts) (conn *Connection, err error) {
 	}
 	conn.dirtyShard = make(chan uint32, conn.opts.Concurrency)
 	conn.shard = make([]connShard, conn.opts.Concurrency)
+	for i := range conn.shard {
+		shard := &conn.shard[i]
+		for j := range shard.requests {
+			shard.requests[j].last = &shard.requests[j].first
+		}
+	}
 
 	if opts.RateLimit > 0 {
 		conn.rlimit = make(chan struct{}, opts.RateLimit);
@@ -310,7 +319,7 @@ func (conn *Connection) closeConnection(neterr error, r *bufio.Reader, w *bufio.
 		for pos, pair := range requests {
 			fut := pair.first
 			requests[pos].first = nil
-			requests[pos].last = nil
+			requests[pos].last = &requests[pos].first
 			for fut != nil {
 				fut.err = neterr
 				fut.markReady()
@@ -444,12 +453,8 @@ func (conn *Connection) newFuture(requestCode int32) (fut *Future) {
 	}
 	pos := (fut.requestId / conn.opts.Concurrency) & (requestsMap - 1)
 	pair := &shard.requests[pos]
-	if pair.last == nil {
-		shard.requests[pos].first = fut
-	} else {
-		shard.requests[pos].last.next = fut
-	}
-	shard.requests[pos].last = fut
+	*pair.last = fut
+	pair.last = &fut.next
 	if conn.opts.Timeout > 0 {
 		fut.timeout = time.Now().Sub(epoch) + conn.opts.Timeout
 	}
@@ -518,19 +523,22 @@ func (conn *Connection) fetchFutureImp(reqid uint32) *Future {
 	}
 	if fut.requestId == reqid {
 		pair.first = fut.next
-		if pair.last == fut {
-			pair.last = nil
+		if fut.next == nil {
+			pair.last = &pair.first
+		} else {
+			fut.next = nil
 		}
 		return fut
 	}
 	for fut.next != nil {
 		next := fut.next
 		if next.requestId == reqid {
-			if pair.last == next {
-				pair.last = fut
-			}
 			fut.next = next.next
-			next.next = nil
+			if next.next == nil {
+				pair.last = &fut.next
+			} else {
+				next.next = nil
+			}
 			return next
 		}
 		fut = next
@@ -560,10 +568,11 @@ func (conn *Connection) timeouts() {
 					shard.bufmut.Lock()
 					fut := pair.first
 					pair.first = fut.next
-					if pair.last == fut {
-						pair.last = nil
+					if fut.next == nil {
+						pair.last = &pair.first
+					} else {
+						fut.next = nil
 					}
-					fut.next = nil
 					fut.err = ClientError{
 						Code: ErrTimeouted,
 						Msg: fmt.Sprintf("client timeout for request %d", fut.requestId),
