@@ -557,11 +557,11 @@ func (conn *Connection) timeouts() {
 		case <-conn.control:
 			t.Stop()
 			return
-		case now := <-t.C:
-			nowepoch = now.Sub(epoch)
+		case <-t.C:
 		}
-		minNext := nowepoch + timeout
+		minNext := time.Now().Sub(epoch) + timeout
 		for i := range conn.shard {
+			nowepoch = time.Now().Sub(epoch)
 			shard := &conn.shard[i]
 			for pos := range shard.requests {
 				shard.rmut.Lock()
@@ -588,7 +588,12 @@ func (conn *Connection) timeouts() {
 				shard.rmut.Unlock()
 			}
 		}
-		t.Reset(minNext - time.Now().Sub(epoch))
+		nowepoch = time.Now().Sub(epoch)
+		if nowepoch + time.Microsecond < minNext {
+			t.Reset(minNext - nowepoch)
+		} else {
+			t.Reset(time.Microsecond)
+		}
 	}
 }
 
