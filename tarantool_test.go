@@ -250,8 +250,8 @@ func BenchmarkClientFutureTyped(b *testing.B) {
 		for j := 0; j < N; j++ {
 			fs[j] = conn.SelectAsync(spaceNo, indexNo, 0, 1, IterEq, IntKey{1111})
 		}
+		var r []Tuple
 		for j := 0; j < N; j++ {
-			var r []Tuple
 			err = fs[j].GetTyped(&r)
 			if err != nil {
 				b.Error(err)
