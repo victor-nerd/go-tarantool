@@ -42,6 +42,9 @@ const (
 	IterBitsAnySet    = uint32(8) // at least one x's bit is set
 	IterBitsAllNotSet = uint32(9) // all bits are not set
 
+	RLimitDrop   = 0
+	RLimitWait   = 1
+
 	OkCode            = uint32(0)
 	ErrorCodeBit      = 0x8000
 	PacketLengthBytes = 5
@@ -52,6 +55,8 @@ const (
 	ErrConnectionNotReady = 0x4000 + iota
 	ErrConnectionClosed   = 0x4000 + iota
 	ErrProtocolError      = 0x4000 + iota
+	ErrTimeouted          = 0x4000 + iota
+	ErrRateLimited        = 0x4000 + iota
 )
 
 // Tarantool server error codes

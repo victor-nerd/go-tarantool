@@ -279,16 +279,6 @@ func (fut *Future) send(body func(*msgpack.Encoder) error) *Future {
 	if fut.err != nil {
 		return fut
 	}
-	// check connection ready to process packets
-	if closed := fut.conn.closed; closed {
-		fut.err = ClientError{ErrConnectionClosed, "using closed connection"}
-		return fut
-	}
-	if c := fut.conn.c; c == nil {
-		fut.err = ClientError{ErrConnectionNotReady, "client connection is not ready"}
-		return fut
-	}
-
 	fut.conn.putFuture(fut, body)
 	if fut.err != nil {
 		fut.conn.fetchFuture(fut.requestId)

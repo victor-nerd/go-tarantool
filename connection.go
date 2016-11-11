@@ -60,15 +60,19 @@ type Opts struct {
 	MaxReconnects uint
 	User          string
 	Pass          string
-	// RateLimit number of simultaneously executed requests.
-	// All new requests will wait until answer for some
-	// previous requests arrived, or will be timeouted.
-	// It has its runtime cost, so it is disabled by default.
-	// On localhost connection and fast selects, 8192 is already
-	// reasonably large value for RateLimit.
-	// But if command lasts more time (lua, updates), or network
-	// is laggy, then larger value should be considered.
+	// RateLimit limits number of 'in-fly' request, ie aready putted into
+	// requests queue, but not yet answered by server or timeouted.
+	// It is disabled by default.
+	// See RLimitAction for possible actions when RateLimit.reached.
 	RateLimit     uint
+	// RLimitAction tells what to do when RateLimit reached:
+	//   RLimitDrop - immediatly abort request,
+	//   RLimitWait - wait during timeout period for some request to be answered.
+	//                If no request answered during timeout period, this request
+	//                is aborted.
+	//                If no timeout period is set, it will wait forever.
+	// Default is RLimitWait
+	RLimitAction  uint
 	// Concurrency is amount of separate mutexes for request
 	// queues and buffers inside of connection.
 	// It is rounded upto nearest power of 2.
@@ -101,6 +105,9 @@ func Connect(addr string, opts Opts) (conn *Connection, err error) {
 
 	if opts.RateLimit > 0 {
 		conn.rlimit = make(chan struct{}, opts.RateLimit);
+		if opts.RLimitAction != RLimitDrop && opts.RLimitAction != RLimitWait {
+			return nil, errors.New("RLimitAction is not equal to RLimitDone nor RLimitWait")
+		}
 	}
 
 	var reconnect time.Duration
@@ -187,7 +194,9 @@ func (conn *Connection) dial() (err error) {
 	}
 
 	// Only if connected and authenticated
+	conn.lockShards()
 	conn.c = c
+	conn.unlockShards()
 	conn.r = r
 	conn.w = w
 
@@ -259,9 +268,6 @@ func (conn *Connection) createConnection() (r *bufio.Reader, w *bufio.Writer, er
 					log.Printf("tarantool: last reconnect to %s failed: %s, giving it up.\n", conn.addr, err.Error())
 					err = ClientError{ErrConnectionClosed, "last reconnect failed"}
 					// mark connection as closed to avoid reopening by another goroutine
-					conn.lockShards()
-					conn.closed = true
-					conn.unlockShards()
 					return
 				}
 				log.Printf("tarantool: reconnect (%d/%d) to %s failed: %s\n", reconnects, conn.opts.MaxReconnects, conn.addr, err.Error())
@@ -291,7 +297,9 @@ func (conn *Connection) closeConnection(neterr error, r *bufio.Reader, w *bufio.
 		return conn.r, nil, nil
 	}
 	err = conn.c.Close()
+	conn.lockShards()
 	conn.c = nil
+	conn.unlockShards()
 	conn.r = nil
 	conn.w = nil
 	conn.lockShards()
@@ -410,6 +418,13 @@ func (conn *Connection) reader() {
 
 func (conn *Connection) newFuture(requestCode int32) (fut *Future) {
 	fut = &Future{}
+	if conn.rlimit != nil && conn.opts.RLimitAction == RLimitDrop {
+		select {
+		case conn.rlimit <- struct{}{}:
+		default:
+			fut.err = ClientError{ ErrRateLimited, "Request is rate limited on client"}
+		}
+	}
 	fut.ready = make(chan struct{})
 	fut.conn = conn
 	fut.requestId = conn.nextRequestId()
@@ -423,6 +438,10 @@ func (conn *Connection) newFuture(requestCode int32) (fut *Future) {
 		shard.rmut.Unlock()
 		return
 	}
+	if c := conn.c; c == nil {
+		fut.err = ClientError{ErrConnectionNotReady, "client connection is not ready"}
+		return fut
+	}
 	pos := (fut.requestId / conn.opts.Concurrency) & (requestsMap - 1)
 	pair := &shard.requests[pos]
 	if pair.last == nil {
@@ -435,7 +454,7 @@ func (conn *Connection) newFuture(requestCode int32) (fut *Future) {
 		fut.timeout = time.Now().Sub(epoch) + conn.opts.Timeout
 	}
 	shard.rmut.Unlock()
-	if conn.rlimit != nil {
+	if conn.rlimit != nil && conn.opts.RLimitAction == RLimitWait {
 		select {
 		case conn.rlimit <- struct{}{}:
 		default:
@@ -545,7 +564,10 @@ func (conn *Connection) timeouts() {
 						pair.last = nil
 					}
 					fut.next = nil
-					fut.err = fmt.Errorf("client timeout for request %d", fut.requestId)
+					fut.err = ClientError{
+						Code: ErrTimeouted,
+						Msg: fmt.Sprintf("client timeout for request %d", fut.requestId),
+					}
 					fut.markReady()
 					shard.bufmut.Unlock()
 				}
