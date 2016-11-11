@@ -71,7 +71,7 @@ type Opts struct {
 	//                If no request answered during timeout period, this request
 	//                is aborted.
 	//                If no timeout period is set, it will wait forever.
-	// Default is RLimitWait
+	// It is required if RateLimit is specified.
 	RLimitAction  uint
 	// Concurrency is amount of separate mutexes for request
 	// queues and buffers inside of connection.
@@ -106,7 +106,7 @@ func Connect(addr string, opts Opts) (conn *Connection, err error) {
 	if opts.RateLimit > 0 {
 		conn.rlimit = make(chan struct{}, opts.RateLimit);
 		if opts.RLimitAction != RLimitDrop && opts.RLimitAction != RLimitWait {
-			return nil, errors.New("RLimitAction is not equal to RLimitDone nor RLimitWait")
+			return nil, errors.New("RLimitAction should be specified to RLimitDone nor RLimitWait")
 		}
 	}
 

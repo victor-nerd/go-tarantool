@@ -42,8 +42,8 @@ const (
 	IterBitsAnySet    = uint32(8) // at least one x's bit is set
 	IterBitsAllNotSet = uint32(9) // all bits are not set
 
-	RLimitDrop   = 0
-	RLimitWait   = 1
+	RLimitDrop   = 1
+	RLimitWait   = 2
 
 	OkCode            = uint32(0)
 	ErrorCodeBit      = 0x8000
