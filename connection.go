@@ -449,6 +449,8 @@ func (conn *Connection) newFuture(requestCode int32) (fut *Future) {
 	}
 	if c := conn.c; c == nil {
 		fut.err = ClientError{ErrConnectionNotReady, "client connection is not ready"}
+		close(fut.ready)
+		shard.rmut.Unlock()
 		return fut
 	}
 	pos := (fut.requestId / conn.opts.Concurrency) & (requestsMap - 1)
