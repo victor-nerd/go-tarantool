@@ -158,8 +158,8 @@ func Example_main() {
 	fmt.Println("Eval Code", resp.Code)
 	fmt.Println("Eval Data", resp.Data)
 
-	resp, err = client.Insert("test", &Tuple{11, "test", "one"})
-	resp, err = client.Insert("test", &Tuple{12, "test", "one"})
+	resp, err = client.Replace("test", &Tuple{11, "test", "eleven"})
+	resp, err = client.Replace("test", &Tuple{12, "test", "twelve"})
 
 	var futs [3]*tarantool.Future
 	futs[0] = client.SelectAsync("test", "primary", 0, 2, tarantool.IterLe, tarantool.UintKey{12})
@@ -206,7 +206,7 @@ func Example_main() {
 	// Eval Code 0
 	// Eval Data [3]
 	// Fut 0 Error <nil>
-	// Fut 0 Data [{12 val 12 bla} {11 test one}]
+	// Fut 0 Data [{12 test twelve} {11 test eleven}]
 	// Fut 1 Error <nil>
 	// Fut 1 Data [[13 4]]
 	// Fut 2 Error <nil>
