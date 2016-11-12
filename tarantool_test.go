@@ -1,7 +1,8 @@
-package tarantool
+package tarantool_test
 
 import (
 	"fmt"
+	. "github.com/tarantool/go-tarantool"
 	"gopkg.in/vmihailenco/msgpack.v2"
 	"strings"
 	"sync"
@@ -27,23 +28,11 @@ type Tuple2 struct {
 	Members []Member
 }
 
-type IntKey struct {
-	id uint
-}
-
 func (t *Tuple) EncodeMsgpack(e *msgpack.Encoder) error {
-	if err := e.EncodeSliceLen(3); err != nil {
-		return err
-	}
-	if err := e.EncodeUint(t.Id); err != nil {
-		return err
-	}
-	if err := e.EncodeString(t.Msg); err != nil {
-		return err
-	}
-	if err := e.EncodeString(t.Name); err != nil {
-		return err
-	}
+	e.EncodeSliceLen(3)
+	e.EncodeUint(t.Id)
+	e.EncodeString(t.Msg)
+	e.EncodeString(t.Name)
 	return nil
 }
 
@@ -69,15 +58,9 @@ func (t *Tuple) DecodeMsgpack(d *msgpack.Decoder) error {
 }
 
 func (m *Member) EncodeMsgpack(e *msgpack.Encoder) error {
-	if err := e.EncodeSliceLen(2); err != nil {
-		return err
-	}
-	if err := e.EncodeString(m.Name); err != nil {
-		return err
-	}
-	if err := e.EncodeUint(m.Val); err != nil {
-		return err
-	}
+	e.EncodeSliceLen(2)
+	e.EncodeString(m.Name)
+	e.EncodeUint(m.Val)
 	return nil
 }
 
@@ -100,18 +83,10 @@ func (m *Member) DecodeMsgpack(d *msgpack.Decoder) error {
 }
 
 func (c *Tuple2) EncodeMsgpack(e *msgpack.Encoder) error {
-	if err := e.EncodeSliceLen(3); err != nil {
-		return err
-	}
-	if err := e.EncodeUint(c.Cid); err != nil {
-		return err
-	}
-	if err := e.EncodeString(c.Orig); err != nil {
-		return err
-	}
-	if err := e.Encode(c.Members); err != nil {
-		return err
-	}
+	e.EncodeSliceLen(3)
+	e.EncodeUint(c.Cid)
+	e.EncodeString(c.Orig)
+	e.Encode(c.Members)
 	return nil
 }
 
@@ -140,21 +115,15 @@ func (c *Tuple2) DecodeMsgpack(d *msgpack.Decoder) error {
 	return nil
 }
 
-func (k IntKey) EncodeMsgpack(enc *msgpack.Encoder) error {
-	enc.EncodeSliceLen(1)
-	enc.EncodeUint(k.id)
-	return nil
-}
-
 var server = "127.0.0.1:3013"
 var spaceNo = uint32(512)
 var spaceName = "test"
 var indexNo = uint32(0)
 var indexName = "primary"
 var opts = Opts{
-	Timeout: 5000 * time.Millisecond,
-	User: "test",
-	Pass: "test",
+	Timeout: 0 * time.Millisecond,
+	User:    "test",
+	Pass:    "test",
 	//Concurrency: 32,
 	//RateLimit: 4*1024,
 }
@@ -437,7 +406,8 @@ func TestClient(t *testing.T) {
 			t.Errorf("Unexpected body of Insert (1)")
 		}
 	}
-	resp, err = conn.Insert(spaceNo, []interface{}{uint(1), "hello", "world"})
+	//resp, err = conn.Insert(spaceNo, []interface{}{uint(1), "hello", "world"})
+	resp, err = conn.Insert(spaceNo, &Tuple{1, "hello", "world"})
 	if tntErr, ok := err.(Error); !ok || tntErr.Code != ErrTupleFound {
 		t.Errorf("Expected ErrTupleFound but got: %v", err)
 	}
@@ -598,6 +568,20 @@ func TestClient(t *testing.T) {
 	// Select Typed
 	var tpl []Tuple
 	err = conn.SelectTyped(spaceNo, indexNo, 0, 1, IterEq, []interface{}{uint(10)}, &tpl)
+	if err != nil {
+		t.Errorf("Failed to SelectTyped: %s", err.Error())
+	}
+	if len(tpl) != 1 {
+		t.Errorf("Result len of SelectTyped != 1")
+	} else {
+		if tpl[0].Id != 10 {
+			t.Errorf("Bad value loaded from SelectTyped")
+		}
+	}
+
+	// Select Typed for one tuple
+	var tpl1 [1]Tuple
+	err = conn.SelectTyped(spaceNo, indexNo, 0, 1, IterEq, []interface{}{uint(10)}, &tpl1)
 	if err != nil {
 		t.Errorf("Failed to SelectTyped: %s", err.Error())
 	}
@@ -816,27 +800,27 @@ func TestSchema(t *testing.T) {
 	}
 
 	var rSpaceNo, rIndexNo uint32
-	rSpaceNo, rIndexNo, err = schema.resolveSpaceIndex(514, 3)
+	rSpaceNo, rIndexNo, err = schema.ResolveSpaceIndex(514, 3)
 	if err != nil || rSpaceNo != 514 || rIndexNo != 3 {
 		t.Errorf("numeric space and index params not resolved as-is")
 	}
-	rSpaceNo, rIndexNo, err = schema.resolveSpaceIndex(514, nil)
+	rSpaceNo, rIndexNo, err = schema.ResolveSpaceIndex(514, nil)
 	if err != nil || rSpaceNo != 514 {
 		t.Errorf("numeric space param not resolved as-is")
 	}
-	rSpaceNo, rIndexNo, err = schema.resolveSpaceIndex("schematest", "secondary")
+	rSpaceNo, rIndexNo, err = schema.ResolveSpaceIndex("schematest", "secondary")
 	if err != nil || rSpaceNo != 514 || rIndexNo != 3 {
 		t.Errorf("symbolic space and index params not resolved")
 	}
-	rSpaceNo, rIndexNo, err = schema.resolveSpaceIndex("schematest", nil)
+	rSpaceNo, rIndexNo, err = schema.ResolveSpaceIndex("schematest", nil)
 	if err != nil || rSpaceNo != 514 {
 		t.Errorf("symbolic space param not resolved")
 	}
-	rSpaceNo, rIndexNo, err = schema.resolveSpaceIndex("schematest22", "secondary")
+	rSpaceNo, rIndexNo, err = schema.ResolveSpaceIndex("schematest22", "secondary")
 	if err == nil {
 		t.Errorf("resolveSpaceIndex didn't returned error with not existing space name")
 	}
-	rSpaceNo, rIndexNo, err = schema.resolveSpaceIndex("schematest", "secondary22")
+	rSpaceNo, rIndexNo, err = schema.ResolveSpaceIndex("schematest", "secondary22")
 	if err == nil {
 		t.Errorf("resolveSpaceIndex didn't returned error with not existing index name")
 	}

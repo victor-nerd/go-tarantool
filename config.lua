@@ -9,7 +9,7 @@ local s = box.schema.space.create('test', {
     id = 512,
     if_not_exists = true,
 })
-s:create_index('primary', {type = 'hash', parts = {1, 'NUM'}, if_not_exists = true})
+s:create_index('primary', {type = 'tree', parts = {1, 'NUM'}, if_not_exists = true})
 
 local st = box.schema.space.create('schematest', {
     id = 514,

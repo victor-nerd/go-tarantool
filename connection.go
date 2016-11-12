@@ -19,27 +19,49 @@ const requestsMap = 128
 
 var epoch = time.Now()
 
-type connShard struct {
-	rmut     sync.Mutex
-	requests [requestsMap]struct {
-		first *Future
-		last  **Future
-	}
-	bufmut sync.Mutex
-	buf    smallWBuf
-	enc    *msgpack.Encoder
-	_pad   [16]uint64
-}
-
+// Connection is a handle to Tarantool.
+//
+// It is created and configured with Connect function, and could not be
+// reconfigured later.
+//
+// It is could be "Connected", "Disconnected", and "Closed".
+//
+// When "Connected" it sends queries to Tarantool.
+//
+// When "Disconnected" it rejects queries with ClientError{Code: ErrConnectionNotReady}
+//
+// When "Closed" it rejects queries with ClientError{Code: ErrConnectionClosed}
+//
+// Connection could become "Closed" when Connection.Close() method called,
+// or when Tarantool disconnected and Reconnect pause is not specified or
+// MaxReconnects is specified and MaxReconnect reconnect attempts already performed.
+//
+// You may perform data manipulation operation by calling its methods:
+// Call*, Insert*, Replace*, Update*, Upsert*, Call*, Eval*.
+//
+// In any method that accepts `space` you my pass either space number or
+// space name (in this case it will be looked up in schema). Same is true for `index`.
+//
+// ATTENTION: `tuple`, `key`, `ops` and `args` arguments for any method should be
+// and array or should serialize to msgpack array.
+//
+// ATTENTION: `result` argument for *Typed methods should deserialize from
+// msgpack array, cause Tarantool always returns result as an array.
+// For all space related methods and Call* (but not Call17*) methods Tarantool
+// always returns array of array (array of tuples for space related methods).
+// For Eval* and Call17* tarantool always returns array, but does not forces
+// array of arrays.
 type Connection struct {
-	addr      string
-	c         *net.TCPConn
-	r         *bufio.Reader
-	w         *bufio.Writer
-	mutex     sync.Mutex
+	addr  string
+	c     *net.TCPConn
+	r     *bufio.Reader
+	w     *bufio.Writer
+	mutex sync.Mutex
+	// Schema contains schema loaded on connection.
 	Schema    *Schema
 	requestId uint32
-	Greeting  *Greeting
+	// Greeting contains first message sent by tarantool
+	Greeting *Greeting
 
 	shard      []connShard
 	dirtyShard chan uint32
@@ -52,17 +74,41 @@ type Connection struct {
 	lenbuf  [PacketLengthBytes]byte
 }
 
+type connShard struct {
+	rmut     sync.Mutex
+	requests [requestsMap]struct {
+		first *Future
+		last  **Future
+	}
+	bufmut sync.Mutex
+	buf    smallWBuf
+	enc    *msgpack.Encoder
+	_pad   [16]uint64
+}
+
+// Greeting is a message sent by tarantool on connect.
 type Greeting struct {
 	Version string
 	auth    string
 }
 
+// Opts is a way to configure Connection
 type Opts struct {
-	Timeout       time.Duration // milliseconds
-	Reconnect     time.Duration // milliseconds
+	// Timeout is requests timeout.
+	Timeout time.Duration
+	// Reconnect is a pause between reconnection attempts.
+	// If specified, then when tarantool is not reachable or disconnected,
+	// new connect attempt is performed after pause.
+	// By default, no reconnection attempts are performed,
+	// so once disconnected, connection becomes Closed.
+	Reconnect time.Duration
+	// MaxReconnects is a maximum reconnect attempts.
+	// After MaxReconnects attempts Connection becomes closed.
 	MaxReconnects uint
-	User          string
-	Pass          string
+	// User name for authorization
+	User string
+	// Pass is password for authorization
+	Pass string
 	// RateLimit limits number of 'in-fly' request, ie aready putted into
 	// requests queue, but not yet answered by server or timeouted.
 	// It is disabled by default.
@@ -83,6 +129,15 @@ type Opts struct {
 	Concurrency uint32
 }
 
+// Connect creates and configures new Connection
+//
+// Note:
+//
+// - If opts.Reconnect is zero (default), then connection either already connected
+// or error is returned.
+//
+// - If opts.Reconnect is non-zero, then error will be returned only if authorization// fails. But if Tarantool is not reachable, then it will attempt to reconnect later
+// and will not end attempts on authorization failures.
 func Connect(addr string, opts Opts) (conn *Connection, err error) {
 
 	conn = &Connection{
@@ -143,11 +198,14 @@ func Connect(addr string, opts Opts) (conn *Connection, err error) {
 	return conn, err
 }
 
+// Close closes Connection.
+// After this method called, there is no way to reopen this Connection.
 func (conn *Connection) Close() error {
 	err := ClientError{ErrConnectionClosed, "connection closed by client"}
 	return conn.closeConnectionForever(err)
 }
 
+// RemoteAddr is address of Tarantool socket
 func (conn *Connection) RemoteAddr() string {
 	conn.mutex.Lock()
 	defer conn.mutex.Unlock()
@@ -157,6 +215,7 @@ func (conn *Connection) RemoteAddr() string {
 	return conn.c.RemoteAddr().String()
 }
 
+// LocalAddr is address of outgoing socket
 func (conn *Connection) LocalAddr() string {
 	conn.mutex.Lock()
 	defer conn.mutex.Unlock()

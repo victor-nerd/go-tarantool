@@ -4,21 +4,28 @@ import (
 	"fmt"
 )
 
+// Schema contains information about spaces and indexes.
 type Schema struct {
-	Version    uint
-	Spaces     map[string]*Space
+	Version uint
+	// Spaces is map from space names to spaces
+	Spaces map[string]*Space
+	// SpacesById is map from space numbers to spaces
 	SpacesById map[uint32]*Space
 }
 
+// Space contains information about tarantool space
 type Space struct {
-	Id          uint32
-	Name        string
-	Engine      string
-	Temporary   bool
+	Id        uint32
+	Name      string
+	Engine    string
+	Temporary bool // Is this space temporaray?
+	// Field configuration is not mandatory and not checked by tarantool.
 	FieldsCount uint32
 	Fields      map[string]*Field
 	FieldsById  map[uint32]*Field
-	Indexes     map[string]*Index
+	// Indexes is map from index names to indexes
+	Indexes map[string]*Index
+	// IndexesById is map from index numbers to indexes
 	IndexesById map[uint32]*Index
 }
 
@@ -28,6 +35,7 @@ type Field struct {
 	Type string
 }
 
+// Index contains information about index
 type Index struct {
 	Id     uint32
 	Name   string
