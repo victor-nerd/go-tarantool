@@ -519,33 +519,23 @@ func (conn *Connection) fetchFutureImp(reqid uint32) *Future {
 	shard := &conn.shard[reqid&(conn.opts.Concurrency-1)]
 	pos := (reqid / conn.opts.Concurrency) & (requestsMap - 1)
 	pair := &shard.requests[pos]
-	fut := pair.first
-	if fut == nil {
-		return nil
-	}
-	if fut.requestId == reqid {
-		pair.first = fut.next
-		if fut.next == nil {
-			pair.last = &pair.first
-		} else {
-			fut.next = nil
+	root := &pair.first
+	for {
+		fut := *root
+		if fut == nil {
+			return nil
 		}
-		return fut
-	}
-	for fut.next != nil {
-		next := fut.next
-		if next.requestId == reqid {
-			fut.next = next.next
-			if next.next == nil {
-				pair.last = &fut.next
+		if fut.requestId == reqid {
+			*root = fut.next
+			if fut.next == nil {
+				pair.last = root
 			} else {
-				next.next = nil
+				fut.next = nil
 			}
-			return next
+			return fut
 		}
-		fut = next
+		root = &fut.next
 	}
-	return nil
 }
 
 func (conn *Connection) timeouts() {
