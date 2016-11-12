@@ -125,7 +125,7 @@ func (resp *Response) decodeBodyTyped(res interface{}) (err error) {
 					return err
 				}
 			default:
-				if _, err = d.DecodeInterface(); err != nil {
+				if err = d.Skip(); err != nil {
 					return err
 				}
 			}
