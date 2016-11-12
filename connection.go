@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"errors"
+	"fmt"
 	"gopkg.in/vmihailenco/msgpack.v2"
 	"io"
 	"log"
@@ -12,7 +13,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	"fmt"
 )
 
 const requestsMap = 128
@@ -21,14 +21,14 @@ var epoch = time.Now()
 
 type connShard struct {
 	rmut     sync.Mutex
-	requests [requestsMap]struct{
+	requests [requestsMap]struct {
 		first *Future
-		last **Future
+		last  **Future
 	}
-	bufmut   sync.Mutex
-	buf      smallWBuf
-	enc      *msgpack.Encoder
-	_pad     [16]uint64
+	bufmut sync.Mutex
+	buf    smallWBuf
+	enc    *msgpack.Encoder
+	_pad   [16]uint64
 }
 
 type Connection struct {
@@ -67,7 +67,7 @@ type Opts struct {
 	// requests queue, but not yet answered by server or timeouted.
 	// It is disabled by default.
 	// See RLimitAction for possible actions when RateLimit.reached.
-	RateLimit     uint
+	RateLimit uint
 	// RLimitAction tells what to do when RateLimit reached:
 	//   RLimitDrop - immediatly abort request,
 	//   RLimitWait - wait during timeout period for some request to be answered.
@@ -75,30 +75,30 @@ type Opts struct {
 	//                is aborted.
 	//                If no timeout period is set, it will wait forever.
 	// It is required if RateLimit is specified.
-	RLimitAction  uint
+	RLimitAction uint
 	// Concurrency is amount of separate mutexes for request
 	// queues and buffers inside of connection.
 	// It is rounded upto nearest power of 2.
 	// By default it is runtime.GOMAXPROCS(-1) * 4
-	Concurrency    uint32
+	Concurrency uint32
 }
 
 func Connect(addr string, opts Opts) (conn *Connection, err error) {
 
 	conn = &Connection{
-		addr:       addr,
-		requestId:  0,
-		Greeting:   &Greeting{},
-		control:    make(chan struct{}),
-		opts:       opts,
-		dec:        msgpack.NewDecoder(&smallBuf{}),
+		addr:      addr,
+		requestId: 0,
+		Greeting:  &Greeting{},
+		control:   make(chan struct{}),
+		opts:      opts,
+		dec:       msgpack.NewDecoder(&smallBuf{}),
 	}
 	maxprocs := uint32(runtime.GOMAXPROCS(-1))
-	if conn.opts.Concurrency == 0 || conn.opts.Concurrency > maxprocs * 128 {
+	if conn.opts.Concurrency == 0 || conn.opts.Concurrency > maxprocs*128 {
 		conn.opts.Concurrency = maxprocs * 4
 	}
-	if c := conn.opts.Concurrency; c & (c-1) != 0  {
-		for i := uint(1); i<32; i*=2 {
+	if c := conn.opts.Concurrency; c&(c-1) != 0 {
+		for i := uint(1); i < 32; i *= 2 {
 			c |= c >> i
 		}
 		conn.opts.Concurrency = c + 1
@@ -113,7 +113,7 @@ func Connect(addr string, opts Opts) (conn *Connection, err error) {
 	}
 
 	if opts.RateLimit > 0 {
-		conn.rlimit = make(chan struct{}, opts.RateLimit);
+		conn.rlimit = make(chan struct{}, opts.RateLimit)
 		if opts.RLimitAction != RLimitDrop && opts.RLimitAction != RLimitWait {
 			return nil, errors.New("RLimitAction should be specified to RLimitDone nor RLimitWait")
 		}
@@ -214,8 +214,8 @@ func (conn *Connection) dial() (err error) {
 
 func (conn *Connection) writeAuthRequest(w *bufio.Writer, scramble []byte) (err error) {
 	request := &Future{
-		conn: conn,
-		requestId: 0,
+		conn:        conn,
+		requestId:   0,
 		requestCode: AuthRequest,
 	}
 	var packet smallWBuf
@@ -431,7 +431,7 @@ func (conn *Connection) newFuture(requestCode int32) (fut *Future) {
 		select {
 		case conn.rlimit <- struct{}{}:
 		default:
-			fut.err = ClientError{ ErrRateLimited, "Request is rate limited on client"}
+			fut.err = ClientError{ErrRateLimited, "Request is rate limited on client"}
 		}
 	}
 	fut.ready = make(chan struct{})
@@ -477,7 +477,6 @@ func (conn *Connection) newFuture(requestCode int32) (fut *Future) {
 	}
 	return
 }
-
 
 func (conn *Connection) putFuture(fut *Future, body func(*msgpack.Encoder) error) {
 	shardn := fut.requestId & (conn.opts.Concurrency - 1)
@@ -567,7 +566,7 @@ func (conn *Connection) timeouts() {
 					}
 					fut.err = ClientError{
 						Code: ErrTimeouted,
-						Msg: fmt.Sprintf("client timeout for request %d", fut.requestId),
+						Msg:  fmt.Sprintf("client timeout for request %d", fut.requestId),
 					}
 					fut.markReady()
 					shard.bufmut.Unlock()
@@ -579,7 +578,7 @@ func (conn *Connection) timeouts() {
 			}
 		}
 		nowepoch = time.Now().Sub(epoch)
-		if nowepoch + time.Microsecond < minNext {
+		if nowepoch+time.Microsecond < minNext {
 			t.Reset(minNext - nowepoch)
 		} else {
 			t.Reset(time.Microsecond)
