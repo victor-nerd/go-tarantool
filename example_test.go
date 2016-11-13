@@ -75,7 +75,7 @@ func ExampleConnection_SelectTyped() {
 	// response is []tarantool_test.Tuple{tarantool_test.Tuple{Id:0x457, Msg:"hello", Name:"world"}}
 }
 
-func Example_main() {
+func Example() {
 	spaceNo := uint32(512)
 	indexNo := uint32(0)
 
