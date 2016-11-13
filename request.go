@@ -350,6 +350,7 @@ func (fut *Future) send(body func(*msgpack.Encoder) error) *Future {
 	fut.conn.putFuture(fut, body)
 	if fut.err != nil {
 		fut.conn.fetchFuture(fut.requestId)
+		fut.markReady()
 		return fut
 	}
 
