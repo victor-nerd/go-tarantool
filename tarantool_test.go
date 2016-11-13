@@ -121,7 +121,7 @@ var spaceName = "test"
 var indexNo = uint32(0)
 var indexName = "primary"
 var opts = Opts{
-	Timeout: 0 * time.Millisecond,
+	Timeout: 500 * time.Millisecond,
 	User:    "test",
 	Pass:    "test",
 	//Concurrency: 32,
