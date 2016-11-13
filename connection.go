@@ -491,6 +491,7 @@ func (conn *Connection) newFuture(requestCode int32) (fut *Future) {
 		case conn.rlimit <- struct{}{}:
 		default:
 			fut.err = ClientError{ErrRateLimited, "Request is rate limited on client"}
+			return
 		}
 	}
 	fut.ready = make(chan struct{})
