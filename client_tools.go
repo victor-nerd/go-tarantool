@@ -56,31 +56,31 @@ func (k IntIntKey) EncodeMsgpack(enc *msgpack.Encoder) error {
 // Op - is update operation
 type Op struct {
 	Op    string
-	Field uint
+	Field int
 	Arg   interface{}
 }
 
 func (o Op) EncodeMsgpack(enc *msgpack.Encoder) error {
 	enc.EncodeSliceLen(3)
 	enc.EncodeString(o.Op)
-	enc.EncodeUint(o.Field)
+	enc.EncodeInt(o.Field)
 	return enc.Encode(o.Arg)
 }
 
 type OpSplice struct {
 	Op      string
-	Field   uint
-	Pos     uint
-	Len     uint
+	Field   int
+	Pos     int
+	Len     int
 	Replace string
 }
 
 func (o OpSplice) EncodeMsgpack(enc *msgpack.Encoder) error {
 	enc.EncodeSliceLen(5)
 	enc.EncodeString(o.Op)
-	enc.EncodeUint(o.Field)
-	enc.EncodeUint(o.Pos)
-	enc.EncodeUint(o.Len)
+	enc.EncodeInt(o.Field)
+	enc.EncodeInt(o.Pos)
+	enc.EncodeInt(o.Len)
 	enc.EncodeString(o.Replace)
 	return nil
 }
