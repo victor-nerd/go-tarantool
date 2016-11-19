@@ -226,7 +226,13 @@ func (conn *Connection) LocalAddr() string {
 }
 
 func (conn *Connection) dial() (err error) {
-	connection, err := net.Dial("tcp", conn.addr)
+	timeout := conn.opts.Reconnect / 2
+	if timeout == 0 {
+		timeout = 500 * time.Millisecond
+	} else if timeout > 5*time.Second {
+		timeout = 5 * time.Second
+	}
+	connection, err := net.DialTimeout("tcp", conn.addr, timeout)
 	if err != nil {
 		return
 	}
@@ -328,6 +334,7 @@ func (conn *Connection) createConnection() (r *bufio.Reader, w *bufio.Writer, er
 	if conn.c == nil {
 		var reconnects uint
 		for {
+			now := time.Now()
 			err = conn.dial()
 			if err == nil {
 				break
@@ -340,7 +347,7 @@ func (conn *Connection) createConnection() (r *bufio.Reader, w *bufio.Writer, er
 				}
 				log.Printf("tarantool: reconnect (%d/%d) to %s failed: %s\n", reconnects, conn.opts.MaxReconnects, conn.addr, err.Error())
 				reconnects++
-				time.Sleep(conn.opts.Reconnect)
+				time.Sleep(now.Add(conn.opts.Reconnect).Sub(time.Now()))
 				continue
 			} else {
 				return
