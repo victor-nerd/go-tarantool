@@ -529,15 +529,15 @@ func (conn *Connection) newFuture(requestCode int32) (fut *Future) {
 	shard.rmut.Lock()
 	if conn.closed {
 		fut.err = ClientError{ErrConnectionClosed, "using closed connection"}
-		close(fut.ready)
+		fut.ready = nil
 		shard.rmut.Unlock()
 		return
 	}
 	if c := conn.c; c == nil {
 		fut.err = ClientError{ErrConnectionNotReady, "client connection is not ready"}
-		close(fut.ready)
+		fut.ready = nil
 		shard.rmut.Unlock()
-		return fut
+		return
 	}
 	pos := (fut.requestId / conn.opts.Concurrency) & (requestsMap - 1)
 	pair := &shard.requests[pos]

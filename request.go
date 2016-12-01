@@ -344,13 +344,14 @@ func (fut *Future) pack(h *smallWBuf, enc *msgpack.Encoder, body func(*msgpack.E
 }
 
 func (fut *Future) send(body func(*msgpack.Encoder) error) *Future {
-	if fut.err != nil {
+	if fut.ready == nil {
 		return fut
 	}
 	fut.conn.putFuture(fut, body)
 	if fut.err != nil {
-		fut.conn.fetchFuture(fut.requestId)
-		fut.markReady()
+		if f := fut.conn.fetchFuture(fut.requestId); f == fut {
+			fut.markReady()
+		}
 		return fut
 	}
 
