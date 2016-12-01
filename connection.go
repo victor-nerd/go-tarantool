@@ -95,6 +95,7 @@ type Greeting struct {
 // Opts is a way to configure Connection
 type Opts struct {
 	// Timeout is requests timeout.
+	// Also used to setup net.TCPConn.Set(Read|Write)Deadline
 	Timeout time.Duration
 	// Reconnect is a pause between reconnection attempts.
 	// If specified, then when tarantool is not reachable or disconnected,
@@ -185,6 +186,7 @@ func Connect(addr string, opts Opts) (conn *Connection, err error) {
 
 	go conn.writer()
 	go conn.reader()
+	go conn.pinger()
 	if conn.opts.Timeout > 0 {
 		go conn.timeouts()
 	}
@@ -238,8 +240,9 @@ func (conn *Connection) dial() (err error) {
 	}
 	c := connection.(*net.TCPConn)
 	c.SetNoDelay(true)
-	r := bufio.NewReaderSize(c, 128*1024)
-	w := bufio.NewWriterSize(c, 128*1024)
+	dc := &DeadlineIO{to: conn.opts.Timeout, c: c}
+	r := bufio.NewReaderSize(dc, 128*1024)
+	w := bufio.NewWriterSize(dc, 128*1024)
 	greeting := make([]byte, 128)
 	_, err = io.ReadFull(r, greeting)
 	if err != nil {
@@ -417,6 +420,22 @@ func (conn *Connection) closeConnectionForever(err error) error {
 	close(conn.control)
 	_, _, err = conn.closeConnection(err, nil, nil)
 	return err
+}
+
+func (conn *Connection) pinger() {
+	if conn.opts.Timeout == 0 {
+		return
+	}
+	t := time.NewTicker(conn.opts.Timeout / 3)
+	defer t.Stop()
+	for {
+		select {
+		case <-conn.control:
+			return
+		case <-t.C:
+		}
+		conn.Ping()
+	}
 }
 
 func (conn *Connection) writer() {
