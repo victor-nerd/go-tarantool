@@ -16,6 +16,11 @@ import (
 )
 
 const requestsMap = 128
+const (
+	connDisconnected = 0
+	connConnected = 1
+	connClosed = 2
+)
 
 var epoch = time.Now()
 
@@ -69,7 +74,7 @@ type Connection struct {
 	control chan struct{}
 	rlimit  chan struct{}
 	opts    Opts
-	closed  bool
+	state   uint32
 	dec     *msgpack.Decoder
 	lenbuf  [PacketLengthBytes]byte
 }
@@ -200,6 +205,11 @@ func Connect(addr string, opts Opts) (conn *Connection, err error) {
 	return conn, err
 }
 
+// ConnectedNow reports if connection is established at the moment.
+func (conn *Connection) ConnectedNow() bool {
+	return atomic.LoadUint32(&conn.state) == connConnected
+}
+
 // Close closes Connection.
 // After this method called, there is no way to reopen this Connection.
 func (conn *Connection) Close() error {
@@ -271,11 +281,12 @@ func (conn *Connection) dial() (err error) {
 	}
 
 	// Only if connected and authenticated
-	conn.lockShards()
 	conn.c = c
-	conn.unlockShards()
 	conn.r = r
 	conn.w = w
+	conn.lockShards()
+	atomic.StoreUint32(&conn.state, connConnected)
+	conn.unlockShards()
 
 	return
 }
@@ -330,7 +341,7 @@ func (conn *Connection) readAuthResponse(r io.Reader) (err error) {
 func (conn *Connection) createConnection() (r *bufio.Reader, w *bufio.Writer, err error) {
 	conn.mutex.Lock()
 	defer conn.mutex.Unlock()
-	if conn.closed {
+	if conn.state == connClosed {
 		err = ClientError{ErrConnectionClosed, "using closed connection"}
 		return
 	}
@@ -374,10 +385,11 @@ func (conn *Connection) closeConnection(neterr error, r *bufio.Reader, w *bufio.
 	if r != nil && r != conn.r {
 		return conn.r, nil, nil
 	}
-	err = conn.c.Close()
 	conn.lockShards()
-	conn.c = nil
+	atomic.CompareAndSwapUint32(&conn.state, connConnected, connDisconnected)
 	conn.unlockShards()
+	err = conn.c.Close()
+	conn.c = nil
 	conn.r = nil
 	conn.w = nil
 	conn.lockShards()
@@ -415,7 +427,7 @@ func (conn *Connection) unlockShards() {
 
 func (conn *Connection) closeConnectionForever(err error) error {
 	conn.lockShards()
-	conn.closed = true
+	atomic.StoreUint32(&conn.state, connClosed)
 	conn.unlockShards()
 	close(conn.control)
 	_, _, err = conn.closeConnection(err, nil, nil)
@@ -443,7 +455,7 @@ func (conn *Connection) writer() {
 	var err error
 	var shardn uint32
 	var packet smallWBuf
-	for !conn.closed {
+	for atomic.LoadUint32(&conn.state) != connClosed {
 		select {
 		case shardn = <-conn.dirtyShard:
 		default:
@@ -483,7 +495,7 @@ func (conn *Connection) writer() {
 func (conn *Connection) reader() {
 	var r *bufio.Reader
 	var err error
-	for !conn.closed {
+	for atomic.LoadUint32(&conn.state) != connClosed {
 		if r == nil {
 			if r, _, err = conn.createConnection(); err != nil {
 				conn.closeConnectionForever(err)
@@ -527,13 +539,13 @@ func (conn *Connection) newFuture(requestCode int32) (fut *Future) {
 	shardn := fut.requestId & (conn.opts.Concurrency - 1)
 	shard := &conn.shard[shardn]
 	shard.rmut.Lock()
-	if conn.closed {
+	switch conn.state {
+	case connClosed:
 		fut.err = ClientError{ErrConnectionClosed, "using closed connection"}
 		fut.ready = nil
 		shard.rmut.Unlock()
 		return
-	}
-	if c := conn.c; c == nil {
+	case connDisconnected:
 		fut.err = ClientError{ErrConnectionNotReady, "client connection is not ready"}
 		fut.ready = nil
 		shard.rmut.Unlock()
