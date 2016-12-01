@@ -381,9 +381,9 @@ func (conn *Connection) closeConnection(neterr error, r *bufio.Reader, w *bufio.
 	defer conn.unlockShards()
 	for i := range conn.shard {
 		conn.shard[i].buf = conn.shard[i].buf[:0]
-		requests := conn.shard[i].requests
-		for pos, pair := range requests {
-			fut := pair.first
+		requests := &conn.shard[i].requests
+		for pos := range requests {
+			fut := requests[pos].first
 			requests[pos].first = nil
 			requests[pos].last = &requests[pos].first
 			for fut != nil {
