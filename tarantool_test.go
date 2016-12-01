@@ -153,6 +153,30 @@ func BenchmarkClientSerial(b *testing.B) {
 	}
 }
 
+func BenchmarkClientSerialTyped(b *testing.B) {
+	var err error
+
+	conn, err := Connect(server, opts)
+	if err != nil {
+		b.Errorf("No connection available")
+		return
+	}
+	defer conn.Close()
+
+	_, err = conn.Replace(spaceNo, []interface{}{uint(1111), "hello", "world"})
+	if err != nil {
+		b.Errorf("No connection available")
+	}
+
+	var r []Tuple
+	for i := 0; i < b.N; i++ {
+		err = conn.SelectTyped(spaceNo, indexNo, 0, 1, IterEq, IntKey{1111}, &r)
+		if err != nil {
+			b.Errorf("No connection available")
+		}
+	}
+}
+
 func BenchmarkClientFuture(b *testing.B) {
 	var err error
 
@@ -340,6 +364,43 @@ func BenchmarkClientParallelMassive(b *testing.B) {
 					break
 				}
 				err = conn.SelectTyped(spaceNo, indexNo, 0, 1, IterEq, IntKey{1111}, &r)
+				wg.Done()
+				if err != nil {
+					b.Errorf("No connection available")
+				}
+			}
+		}()
+	}
+	for i := 0; i < b.N; i++ {
+		wg.Add(1)
+		limit <- struct{}{}
+	}
+	wg.Wait()
+	close(limit)
+}
+
+func BenchmarkClientParallelMassiveUntyped(b *testing.B) {
+	conn, err := Connect(server, opts)
+	if err != nil {
+		b.Errorf("No connection available")
+		return
+	}
+	defer conn.Close()
+
+	_, err = conn.Replace(spaceNo, []interface{}{uint(1111), "hello", "world"})
+	if err != nil {
+		b.Errorf("No connection available")
+	}
+
+	var wg sync.WaitGroup
+	limit := make(chan struct{}, 128*1024)
+	for i := 0; i < 512; i++ {
+		go func() {
+			for {
+				if _, ok := <-limit; !ok {
+					break
+				}
+				_, err = conn.Select(spaceNo, indexNo, 0, 1, IterEq, []interface{}{uint(1111)})
 				wg.Done()
 				if err != nil {
 					b.Errorf("No connection available")
