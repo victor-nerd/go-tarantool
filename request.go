@@ -7,20 +7,19 @@ import (
 
 // Future is a handle for asynchronous request
 type Future struct {
-	conn        *Connection
 	requestId   uint32
 	requestCode int32
+	timeout     time.Duration
 	resp        *Response
 	err         error
 	ready       chan struct{}
-	timeout     time.Duration
 	next        *Future
 }
 
 // Ping sends empty request to Tarantool to check connection.
 func (conn *Connection) Ping() (resp *Response, err error) {
 	future := conn.newFuture(PingRequest)
-	return future.send(func(enc *msgpack.Encoder) error { enc.EncodeMapLen(0); return nil }).Get()
+	return future.send(conn, func(enc *msgpack.Encoder) error { enc.EncodeMapLen(0); return nil }).Get()
 }
 
 func (req *Future) fillSearch(enc *msgpack.Encoder, spaceNo, indexNo uint32, key interface{}) error {
@@ -185,9 +184,9 @@ func (conn *Connection) SelectAsync(space, index interface{}, offset, limit, ite
 	future := conn.newFuture(SelectRequest)
 	spaceNo, indexNo, err := conn.Schema.resolveSpaceIndex(space, index)
 	if err != nil {
-		return badfuture(err)
+		return future.fail(conn, err)
 	}
-	return future.send(func(enc *msgpack.Encoder) error {
+	return future.send(conn, func(enc *msgpack.Encoder) error {
 		enc.EncodeMapLen(6)
 		future.fillIterator(enc, offset, limit, iterator)
 		return future.fillSearch(enc, spaceNo, indexNo, key)
@@ -200,9 +199,9 @@ func (conn *Connection) InsertAsync(space interface{}, tuple interface{}) *Futur
 	future := conn.newFuture(InsertRequest)
 	spaceNo, _, err := conn.Schema.resolveSpaceIndex(space, nil)
 	if err != nil {
-		return badfuture(err)
+		return future.fail(conn, err)
 	}
-	return future.send(func(enc *msgpack.Encoder) error {
+	return future.send(conn, func(enc *msgpack.Encoder) error {
 		enc.EncodeMapLen(2)
 		return future.fillInsert(enc, spaceNo, tuple)
 	})
@@ -214,9 +213,9 @@ func (conn *Connection) ReplaceAsync(space interface{}, tuple interface{}) *Futu
 	future := conn.newFuture(ReplaceRequest)
 	spaceNo, _, err := conn.Schema.resolveSpaceIndex(space, nil)
 	if err != nil {
-		return badfuture(err)
+		return future.fail(conn, err)
 	}
-	return future.send(func(enc *msgpack.Encoder) error {
+	return future.send(conn, func(enc *msgpack.Encoder) error {
 		enc.EncodeMapLen(2)
 		return future.fillInsert(enc, spaceNo, tuple)
 	})
@@ -228,9 +227,9 @@ func (conn *Connection) DeleteAsync(space, index interface{}, key interface{}) *
 	future := conn.newFuture(DeleteRequest)
 	spaceNo, indexNo, err := conn.Schema.resolveSpaceIndex(space, index)
 	if err != nil {
-		return badfuture(err)
+		return future.fail(conn, err)
 	}
-	return future.send(func(enc *msgpack.Encoder) error {
+	return future.send(conn, func(enc *msgpack.Encoder) error {
 		enc.EncodeMapLen(3)
 		return future.fillSearch(enc, spaceNo, indexNo, key)
 	})
@@ -242,9 +241,9 @@ func (conn *Connection) UpdateAsync(space, index interface{}, key, ops interface
 	future := conn.newFuture(UpdateRequest)
 	spaceNo, indexNo, err := conn.Schema.resolveSpaceIndex(space, index)
 	if err != nil {
-		return badfuture(err)
+		return future.fail(conn, err)
 	}
-	return future.send(func(enc *msgpack.Encoder) error {
+	return future.send(conn, func(enc *msgpack.Encoder) error {
 		enc.EncodeMapLen(4)
 		if err := future.fillSearch(enc, spaceNo, indexNo, key); err != nil {
 			return err
@@ -260,9 +259,9 @@ func (conn *Connection) UpsertAsync(space interface{}, tuple interface{}, ops in
 	future := conn.newFuture(UpsertRequest)
 	spaceNo, _, err := conn.Schema.resolveSpaceIndex(space, nil)
 	if err != nil {
-		return badfuture(err)
+		return future.fail(conn, err)
 	}
-	return future.send(func(enc *msgpack.Encoder) error {
+	return future.send(conn, func(enc *msgpack.Encoder) error {
 		enc.EncodeMapLen(3)
 		enc.EncodeUint64(KeySpaceNo)
 		enc.EncodeUint64(uint64(spaceNo))
@@ -279,7 +278,7 @@ func (conn *Connection) UpsertAsync(space interface{}, tuple interface{}, ops in
 // It uses request code for tarantool 1.6, so future's result is always array of arrays
 func (conn *Connection) CallAsync(functionName string, args interface{}) *Future {
 	future := conn.newFuture(CallRequest)
-	return future.send(func(enc *msgpack.Encoder) error {
+	return future.send(conn, func(enc *msgpack.Encoder) error {
 		enc.EncodeMapLen(2)
 		enc.EncodeUint64(KeyFunctionName)
 		enc.EncodeString(functionName)
@@ -293,7 +292,7 @@ func (conn *Connection) CallAsync(functionName string, args interface{}) *Future
 // (though, keep in mind, result is always array)
 func (conn *Connection) Call17Async(functionName string, args interface{}) *Future {
 	future := conn.newFuture(Call17Request)
-	return future.send(func(enc *msgpack.Encoder) error {
+	return future.send(conn, func(enc *msgpack.Encoder) error {
 		enc.EncodeMapLen(2)
 		enc.EncodeUint64(KeyFunctionName)
 		enc.EncodeString(functionName)
@@ -305,7 +304,7 @@ func (conn *Connection) Call17Async(functionName string, args interface{}) *Futu
 // EvalAsync sends a lua expression for evaluation and returns Future.
 func (conn *Connection) EvalAsync(expr string, args interface{}) *Future {
 	future := conn.newFuture(EvalRequest)
-	return future.send(func(enc *msgpack.Encoder) error {
+	return future.send(conn, func(enc *msgpack.Encoder) error {
 		enc.EncodeMapLen(2)
 		enc.EncodeUint64(KeyExpression)
 		enc.EncodeString(expr)
@@ -343,14 +342,14 @@ func (fut *Future) pack(h *smallWBuf, enc *msgpack.Encoder, body func(*msgpack.E
 	return
 }
 
-func (fut *Future) send(body func(*msgpack.Encoder) error) *Future {
+func (fut *Future) send(conn *Connection, body func(*msgpack.Encoder) error) *Future {
 	if fut.ready == nil {
 		return fut
 	}
-	fut.conn.putFuture(fut, body)
+	conn.putFuture(fut, body)
 	if fut.err != nil {
-		if f := fut.conn.fetchFuture(fut.requestId); f == fut {
-			fut.markReady()
+		if f := conn.fetchFuture(fut.requestId); f == fut {
+			fut.markReady(conn)
 		}
 		return fut
 	}
@@ -358,15 +357,19 @@ func (fut *Future) send(body func(*msgpack.Encoder) error) *Future {
 	return fut
 }
 
-func (fut *Future) markReady() {
+func (fut *Future) markReady(conn *Connection) {
 	close(fut.ready)
-	if fut.conn.rlimit != nil {
-		<-fut.conn.rlimit
+	if conn.rlimit != nil {
+		<-conn.rlimit
 	}
 }
 
-func badfuture(err error) *Future {
-	return &Future{err: err}
+func (fut *Future) fail(conn *Connection, err error) *Future {
+	if f := conn.fetchFuture(fut.requestId); f == fut {
+		f.err = err
+		fut.markReady(conn)
+	}
+	return fut
 }
 
 func (fut *Future) wait() {

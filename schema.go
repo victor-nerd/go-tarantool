@@ -172,6 +172,10 @@ func (schema *Schema) resolveSpaceIndex(s interface{}, i interface{}) (spaceNo, 
 
 	switch s := s.(type) {
 	case string:
+		if schema == nil {
+			err = fmt.Errorf("Schema is not loaded")
+			return
+		}
 		if space, ok = schema.Spaces[s]; !ok {
 			err = fmt.Errorf("there is no space with name %s", s)
 			return
@@ -208,6 +212,10 @@ func (schema *Schema) resolveSpaceIndex(s interface{}, i interface{}) (spaceNo, 
 	if i != nil {
 		switch i := i.(type) {
 		case string:
+			if schema == nil {
+				err = fmt.Errorf("Schema is not loaded")
+				return
+			}
 			if space == nil {
 				if space, ok = schema.SpacesById[spaceNo]; !ok {
 					err = fmt.Errorf("there is no space with id %d", spaceNo)

@@ -59,8 +59,6 @@ var epoch = time.Now()
 type Connection struct {
 	addr  string
 	c     *net.TCPConn
-	r     *bufio.Reader
-	w     *bufio.Writer
 	mutex sync.Mutex
 	// Schema contains schema loaded on connection.
 	Schema    *Schema
@@ -133,6 +131,9 @@ type Opts struct {
 	// It is rounded upto nearest power of 2.
 	// By default it is runtime.GOMAXPROCS(-1) * 4
 	Concurrency uint32
+	// SkipSchema disables schema loading. Without disabling schema loading,
+	// there is no way to create Connection for currently not accessible tarantool.
+	SkipSchema bool
 }
 
 // Connect creates and configures new Connection
@@ -164,7 +165,7 @@ func Connect(addr string, opts Opts) (conn *Connection, err error) {
 		}
 		conn.opts.Concurrency = c + 1
 	}
-	conn.dirtyShard = make(chan uint32, conn.opts.Concurrency)
+	conn.dirtyShard = make(chan uint32, conn.opts.Concurrency*2)
 	conn.shard = make([]connShard, conn.opts.Concurrency)
 	for i := range conn.shard {
 		shard := &conn.shard[i]
@@ -180,26 +181,35 @@ func Connect(addr string, opts Opts) (conn *Connection, err error) {
 		}
 	}
 
-	var reconnect time.Duration
-	// disable reconnecting for first connect
-	reconnect, conn.opts.Reconnect = conn.opts.Reconnect, 0
-	_, _, err = conn.createConnection()
-	conn.opts.Reconnect = reconnect
-	if err != nil && reconnect == 0 {
-		return nil, err
+	if err = conn.createConnection(false); err != nil {
+		if conn.opts.Reconnect <= 0 {
+			return nil, err
+		} else {
+			// without SkipSchema it is useless
+			go func(conn *Connection) {
+				conn.mutex.Lock()
+				defer conn.mutex.Unlock()
+				if err := conn.createConnection(true); err != nil {
+					conn.closeConnection(err, true)
+				}
+			}(conn)
+			err = nil
+		}
 	}
 
-	go conn.writer()
-	go conn.reader()
 	go conn.pinger()
 	if conn.opts.Timeout > 0 {
 		go conn.timeouts()
 	}
 
 	// TODO: reload schema after reconnect
-	if err = conn.loadSchema(); err != nil {
-		conn.closeConnection(err, nil, nil)
-		return nil, err
+	if !conn.opts.SkipSchema {
+		if err = conn.loadSchema(); err != nil {
+			conn.mutex.Lock()
+			defer conn.mutex.Unlock()
+			conn.closeConnection(err, true)
+			return nil, err
+		}
 	}
 
 	return conn, err
@@ -214,7 +224,9 @@ func (conn *Connection) ConnectedNow() bool {
 // After this method called, there is no way to reopen this Connection.
 func (conn *Connection) Close() error {
 	err := ClientError{ErrConnectionClosed, "connection closed by client"}
-	return conn.closeConnectionForever(err)
+	conn.mutex.Lock()
+	defer conn.mutex.Unlock()
+	return conn.closeConnection(err, true)
 }
 
 // RemoteAddr is address of Tarantool socket
@@ -281,19 +293,18 @@ func (conn *Connection) dial() (err error) {
 	}
 
 	// Only if connected and authenticated
-	conn.c = c
-	conn.r = r
-	conn.w = w
 	conn.lockShards()
+	conn.c = c
 	atomic.StoreUint32(&conn.state, connConnected)
 	conn.unlockShards()
+	go conn.writer(w, c)
+	go conn.reader(r, c)
 
 	return
 }
 
 func (conn *Connection) writeAuthRequest(w *bufio.Writer, scramble []byte) (err error) {
 	request := &Future{
-		conn:        conn,
 		requestId:   0,
 		requestCode: AuthRequest,
 	}
@@ -338,62 +349,47 @@ func (conn *Connection) readAuthResponse(r io.Reader) (err error) {
 	return
 }
 
-func (conn *Connection) createConnection() (r *bufio.Reader, w *bufio.Writer, err error) {
-	conn.mutex.Lock()
-	defer conn.mutex.Unlock()
+func (conn *Connection) createConnection(reconnect bool) (err error) {
+	var reconnects uint
+	for conn.c == nil && conn.state == connDisconnected {
+		now := time.Now()
+		err = conn.dial()
+		if err == nil || !reconnect {
+			return
+		}
+		if conn.opts.MaxReconnects > 0 && reconnects > conn.opts.MaxReconnects {
+			log.Printf("tarantool: last reconnect to %s failed: %s, giving it up.\n", conn.addr, err.Error())
+			err = ClientError{ErrConnectionClosed, "last reconnect failed"}
+			// mark connection as closed to avoid reopening by another goroutine
+			return
+		}
+		log.Printf("tarantool: reconnect (%d/%d) to %s failed: %s\n", reconnects, conn.opts.MaxReconnects, conn.addr, err.Error())
+		reconnects++
+		conn.mutex.Unlock()
+		time.Sleep(now.Add(conn.opts.Reconnect).Sub(time.Now()))
+		conn.mutex.Lock()
+	}
 	if conn.state == connClosed {
 		err = ClientError{ErrConnectionClosed, "using closed connection"}
-		return
 	}
-	if conn.c == nil {
-		var reconnects uint
-		for {
-			now := time.Now()
-			err = conn.dial()
-			if err == nil {
-				break
-			} else if conn.opts.Reconnect > 0 {
-				if conn.opts.MaxReconnects > 0 && reconnects > conn.opts.MaxReconnects {
-					log.Printf("tarantool: last reconnect to %s failed: %s, giving it up.\n", conn.addr, err.Error())
-					err = ClientError{ErrConnectionClosed, "last reconnect failed"}
-					// mark connection as closed to avoid reopening by another goroutine
-					return
-				}
-				log.Printf("tarantool: reconnect (%d/%d) to %s failed: %s\n", reconnects, conn.opts.MaxReconnects, conn.addr, err.Error())
-				reconnects++
-				time.Sleep(now.Add(conn.opts.Reconnect).Sub(time.Now()))
-				continue
-			} else {
-				return
-			}
-		}
-	}
-	r = conn.r
-	w = conn.w
 	return
 }
 
-func (conn *Connection) closeConnection(neterr error, r *bufio.Reader, w *bufio.Writer) (rr *bufio.Reader, ww *bufio.Writer, err error) {
-	conn.mutex.Lock()
-	defer conn.mutex.Unlock()
-	if conn.c == nil {
-		return
-	}
-	if w != nil && w != conn.w {
-		return nil, conn.w, nil
-	}
-	if r != nil && r != conn.r {
-		return conn.r, nil, nil
-	}
-	conn.lockShards()
-	atomic.CompareAndSwapUint32(&conn.state, connConnected, connDisconnected)
-	conn.unlockShards()
-	err = conn.c.Close()
-	conn.c = nil
-	conn.r = nil
-	conn.w = nil
+func (conn *Connection) closeConnection(neterr error, forever bool) (err error) {
 	conn.lockShards()
 	defer conn.unlockShards()
+	if forever {
+		if conn.state != connClosed {
+			close(conn.control)
+			atomic.StoreUint32(&conn.state, connClosed)
+		}
+	} else {
+		atomic.StoreUint32(&conn.state, connDisconnected)
+	}
+	if conn.c != nil {
+		err = conn.c.Close()
+		conn.c = nil
+	}
 	for i := range conn.shard {
 		conn.shard[i].buf = conn.shard[i].buf[:0]
 		requests := &conn.shard[i].requests
@@ -403,12 +399,27 @@ func (conn *Connection) closeConnection(neterr error, r *bufio.Reader, w *bufio.
 			requests[pos].last = &requests[pos].first
 			for fut != nil {
 				fut.err = neterr
-				fut.markReady()
+				fut.markReady(conn)
 				fut, fut.next = fut.next, nil
 			}
 		}
 	}
 	return
+}
+
+func (conn *Connection) reconnect(neterr error, c *net.TCPConn) {
+	conn.mutex.Lock()
+	defer conn.mutex.Unlock()
+	if conn.opts.Reconnect > 0 {
+		if c == conn.c {
+			conn.closeConnection(neterr, false)
+			if err := conn.createConnection(true); err != nil {
+				conn.closeConnection(err, true)
+			}
+		}
+	} else {
+		conn.closeConnection(neterr, true)
+	}
 }
 
 func (conn *Connection) lockShards() {
@@ -425,20 +436,12 @@ func (conn *Connection) unlockShards() {
 	}
 }
 
-func (conn *Connection) closeConnectionForever(err error) error {
-	conn.lockShards()
-	atomic.StoreUint32(&conn.state, connClosed)
-	conn.unlockShards()
-	close(conn.control)
-	_, _, err = conn.closeConnection(err, nil, nil)
-	return err
-}
-
 func (conn *Connection) pinger() {
-	if conn.opts.Timeout == 0 {
-		return
+	to := conn.opts.Timeout
+	if to == 0 {
+		to = 3*time.Second
 	}
-	t := time.NewTicker(conn.opts.Timeout / 3)
+	t := time.NewTicker(to / 3)
 	defer t.Stop()
 	for {
 		select {
@@ -450,9 +453,7 @@ func (conn *Connection) pinger() {
 	}
 }
 
-func (conn *Connection) writer() {
-	var w *bufio.Writer
-	var err error
+func (conn *Connection) writer(w *bufio.Writer, c *net.TCPConn) {
 	var shardn uint32
 	var packet smallWBuf
 	for atomic.LoadUint32(&conn.state) != connClosed {
@@ -460,9 +461,10 @@ func (conn *Connection) writer() {
 		case shardn = <-conn.dirtyShard:
 		default:
 			runtime.Gosched()
-			if len(conn.dirtyShard) == 0 && w != nil {
+			if len(conn.dirtyShard) == 0 {
 				if err := w.Flush(); err != nil {
-					_, w, _ = conn.closeConnection(err, nil, w)
+					conn.reconnect(err, c)
+					return
 				}
 			}
 			select {
@@ -471,51 +473,42 @@ func (conn *Connection) writer() {
 				return
 			}
 		}
-		if w == nil {
-			if _, w, err = conn.createConnection(); err != nil {
-				conn.closeConnectionForever(err)
-				return
-			}
-		}
 		shard := &conn.shard[shardn]
 		shard.bufmut.Lock()
+		if conn.c != c {
+			conn.dirtyShard <- shardn
+			shard.bufmut.Unlock()
+			return
+		}
 		packet, shard.buf = shard.buf, packet
 		shard.bufmut.Unlock()
 		if len(packet) == 0 {
 			continue
 		}
 		if err := write(w, packet); err != nil {
-			_, w, _ = conn.closeConnection(err, nil, w)
-			continue
+			conn.reconnect(err, c)
+			return
 		}
 		packet = packet[0:0]
 	}
 }
 
-func (conn *Connection) reader() {
-	var r *bufio.Reader
-	var err error
+func (conn *Connection) reader(r *bufio.Reader, c *net.TCPConn) {
 	for atomic.LoadUint32(&conn.state) != connClosed {
-		if r == nil {
-			if r, _, err = conn.createConnection(); err != nil {
-				conn.closeConnectionForever(err)
-				return
-			}
-		}
 		respBytes, err := conn.read(r)
 		if err != nil {
-			r, _, _ = conn.closeConnection(err, r, nil)
-			continue
+			conn.reconnect(err, c)
+			return
 		}
 		resp := &Response{buf: smallBuf{b: respBytes}}
 		err = resp.decodeHeader(conn.dec)
 		if err != nil {
-			r, _, _ = conn.closeConnection(err, r, nil)
-			continue
+			conn.reconnect(err, c)
+			return
 		}
 		if fut := conn.fetchFuture(resp.RequestId); fut != nil {
 			fut.resp = resp
-			fut.markReady()
+			fut.markReady(conn)
 		} else {
 			log.Printf("tarantool: unexpected requestId (%d) in response", uint(resp.RequestId))
 		}
@@ -533,7 +526,6 @@ func (conn *Connection) newFuture(requestCode int32) (fut *Future) {
 		}
 	}
 	fut.ready = make(chan struct{})
-	fut.conn = conn
 	fut.requestId = conn.nextRequestId()
 	fut.requestCode = requestCode
 	shardn := fut.requestId & (conn.opts.Concurrency - 1)
@@ -666,7 +658,7 @@ func (conn *Connection) timeouts() {
 						Code: ErrTimeouted,
 						Msg:  fmt.Sprintf("client timeout for request %d", fut.requestId),
 					}
-					fut.markReady()
+					fut.markReady(conn)
 					shard.bufmut.Unlock()
 				}
 				if pair.first != nil && pair.first.timeout < minNext {
