@@ -22,6 +22,26 @@ const (
 	connClosed = 2
 )
 
+type ConnEventKind int
+
+const (
+	// Connect signals that connection is established or reestablished
+	Connected ConnEventKind = iota + 1
+	// Disconnect signals that connection is broken
+	Disconnected
+	// ReconnectFailed signals that attempt to reconnect has failed
+	ReconnectFailed
+	// Either reconnect attempts exhausted, or explicit Close is called
+	Closed
+)
+
+// ConnEvent is sent throw Notify channel specified in Opts
+type ConnEvent struct {
+	Conn   *Connection
+	Kind   ConnEventKind
+	When   time.Time
+}
+
 var epoch = time.Now()
 
 // Connection is a handle to Tarantool.
@@ -134,6 +154,11 @@ type Opts struct {
 	// SkipSchema disables schema loading. Without disabling schema loading,
 	// there is no way to create Connection for currently not accessible tarantool.
 	SkipSchema bool
+	// Notify is a channel which receives notifications about Connection status
+	// changes.
+	Notify chan<- ConnEvent
+	// Handle is user specified value, that could be retrivied with Handle() method
+	Handle interface{}
 }
 
 // Connect creates and configures new Connection
@@ -247,6 +272,11 @@ func (conn *Connection) LocalAddr() string {
 		return ""
 	}
 	return conn.c.LocalAddr().String()
+}
+
+// Handle returns user specified handle from Opts
+func (conn *Connection) Handle() interface{} {
+	return conn.opts.Handle
 }
 
 func (conn *Connection) dial() (err error) {
@@ -364,6 +394,7 @@ func (conn *Connection) createConnection(reconnect bool) (err error) {
 			return
 		}
 		log.Printf("tarantool: reconnect (%d/%d) to %s failed: %s\n", reconnects, conn.opts.MaxReconnects, conn.addr, err.Error())
+		conn.notify(ReconnectFailed)
 		reconnects++
 		conn.mutex.Unlock()
 		time.Sleep(now.Add(conn.opts.Reconnect).Sub(time.Now()))
@@ -382,9 +413,11 @@ func (conn *Connection) closeConnection(neterr error, forever bool) (err error) 
 		if conn.state != connClosed {
 			close(conn.control)
 			atomic.StoreUint32(&conn.state, connClosed)
+			conn.notify(Closed)
 		}
 	} else {
 		atomic.StoreUint32(&conn.state, connDisconnected)
+		conn.notify(Disconnected)
 	}
 	if conn.c != nil {
 		err = conn.c.Close()
@@ -450,6 +483,15 @@ func (conn *Connection) pinger() {
 		case <-t.C:
 		}
 		conn.Ping()
+	}
+}
+
+func (conn *Connection) notify(kind ConnEventKind) {
+	if conn.opts.Notify != nil {
+		select {
+		case conn.opts.Notify <- ConnEvent{ Kind:kind, Conn: conn, When: time.Now() }:
+		default:
+		}
 	}
 }
 
