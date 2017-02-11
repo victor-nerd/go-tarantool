@@ -385,6 +385,9 @@ func (conn *Connection) createConnection(reconnect bool) (err error) {
 		now := time.Now()
 		err = conn.dial()
 		if err == nil || !reconnect {
+			if err == nil {
+				conn.notify(Connected)
+			}
 			return
 		}
 		if conn.opts.MaxReconnects > 0 && reconnects > conn.opts.MaxReconnects {
