@@ -133,7 +133,11 @@ func (conn *Connection) loadSchema() (err error) {
 			index.Unique = row[4].(uint64) > 0
 		case map[interface{}]interface{}:
 			opts := row[4].(map[interface{}]interface{})
-			index.Unique = opts["unique"].(bool)
+			var ok bool
+			if index.Unique, ok = opts["unique"].(bool); !ok {
+				/* see bug https://github.com/tarantool/tarantool/issues/2060 */
+				index.Unique = true
+			}
 		default:
 			panic("unexpected schema format (index flags)")
 		}
