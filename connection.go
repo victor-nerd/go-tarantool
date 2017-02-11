@@ -18,8 +18,8 @@ import (
 const requestsMap = 128
 const (
 	connDisconnected = 0
-	connConnected = 1
-	connClosed = 2
+	connConnected    = 1
+	connClosed       = 2
 )
 
 type ConnEventKind int
@@ -37,9 +37,9 @@ const (
 
 // ConnEvent is sent throw Notify channel specified in Opts
 type ConnEvent struct {
-	Conn   *Connection
-	Kind   ConnEventKind
-	When   time.Time
+	Conn *Connection
+	Kind ConnEventKind
+	When time.Time
 }
 
 var epoch = time.Now()
@@ -472,7 +472,7 @@ func (conn *Connection) unlockShards() {
 func (conn *Connection) pinger() {
 	to := conn.opts.Timeout
 	if to == 0 {
-		to = 3*time.Second
+		to = 3 * time.Second
 	}
 	t := time.NewTicker(to / 3)
 	defer t.Stop()
@@ -489,7 +489,7 @@ func (conn *Connection) pinger() {
 func (conn *Connection) notify(kind ConnEventKind) {
 	if conn.opts.Notify != nil {
 		select {
-		case conn.opts.Notify <- ConnEvent{ Kind:kind, Conn: conn, When: time.Now() }:
+		case conn.opts.Notify <- ConnEvent{Kind: kind, Conn: conn, When: time.Now()}:
 		default:
 		}
 	}
