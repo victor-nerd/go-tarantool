@@ -326,19 +326,7 @@ type Member struct {
 	Val   uint
 }
 
-type Tuple struct {
-	Cid     uint
-	Orig    string
-	Members []Member
-}
-
-func init() {
-	msgpack.Register(reflect.TypeOf(Tuple{}), encodeTuple, decodeTuple)
-	msgpack.Register(reflect.TypeOf(Member{}), encodeMember, decodeMember)
-}
-
-func encodeMember(e *msgpack.Encoder, v reflect.Value) error {
-	m := v.Interface().(Member)
+func (m *Member) EncodeMsgpack(e *msgpack.Encoder) error {
 	if err := e.EncodeSliceLen(2); err != nil {
 		return err
 	}
@@ -351,10 +339,9 @@ func encodeMember(e *msgpack.Encoder, v reflect.Value) error {
 	return nil
 }
 
-func decodeMember(d *msgpack.Decoder, v reflect.Value) error {
+func (m *Member) DecodeMsgpack(d *msgpack.Decoder) error {
 	var err error
 	var l int
-	m := v.Addr().Interface().(*Member)
 	if l, err = d.DecodeSliceLen(); err != nil {
 		return err
 	}
@@ -370,8 +357,13 @@ func decodeMember(d *msgpack.Decoder, v reflect.Value) error {
 	return nil
 }
 
-func encodeTuple(e *msgpack.Encoder, v reflect.Value) error {
-	c := v.Interface().(Tuple)
+type Tuple struct {
+	Cid     uint
+	Orig    string
+	Members []Member
+}
+
+func (c *Tuple) EncodeMsgpack(e *msgpack.Encoder) error {
 	if err := e.EncodeSliceLen(3); err != nil {
 		return err
 	}
@@ -390,10 +382,9 @@ func encodeTuple(e *msgpack.Encoder, v reflect.Value) error {
 	return nil
 }
 
-func decodeTuple(d *msgpack.Decoder, v reflect.Value) error {
+func (c *Tuple) DecodeMsgpack(d *msgpack.Decoder) error {
 	var err error
 	var l int
-	c := v.Addr().Interface().(*Tuple)
 	if l, err = d.DecodeSliceLen(); err != nil {
 		return err
 	}
@@ -441,6 +432,38 @@ func main() {
 		return
 	}
 }
+
+/*
+// Old way to register types
+func init() {
+	msgpack.Register(reflect.TypeOf(Tuple{}), encodeTuple, decodeTuple)
+	msgpack.Register(reflect.TypeOf(Member{}), encodeMember, decodeMember)
+}
+
+func encodeMember(e *msgpack.Encoder, v reflect.Value) error {
+	m := v.Interface().(Member)
+	// same code as in EncodeMsgpack
+	return nil
+}
+
+func decodeMember(d *msgpack.Decoder, v reflect.Value) error {
+	m := v.Addr().Interface().(*Member)
+	// same code as in DecodeMsgpack
+	return nil
+}
+
+func encodeTuple(e *msgpack.Encoder, v reflect.Value) error {
+	c := v.Interface().(Tuple)
+	// same code as in EncodeMsgpack
+	return nil
+}
+
+func decodeTuple(d *msgpack.Decoder, v reflect.Value) error {
+	c := v.Addr().Interface().(*Tuple)
+	// same code as in DecodeMsgpack
+	return nil
+}
+*/
 
 ```
 
