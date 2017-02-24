@@ -314,6 +314,9 @@ func main() {
 It's possible to specify custom pack/unpack functions for your types. It will
 allow you to store complex structures inside a tuple and may speed up you requests.
 
+Also you can just instruct msgpack library to encode your struct as an array. It
+will be slower than custom packer/unpacker, but still safe.
+
 ```go
 import (
 	"github.com/tarantool/go-tarantool"
@@ -324,6 +327,21 @@ type Member struct {
 	Name  string
 	Nonce string
 	Val   uint
+}
+
+type Tuple struct {
+	Cid     uint
+	Orig    string
+	Members []Member
+}
+
+/* same effect in magic way and slower */
+type Tuple2 struct {
+	_msgpack struct{} `msgpack:",asArray"`
+
+	Cid     uint
+	Orig    string
+	Members []Member
 }
 
 func (m *Member) EncodeMsgpack(e *msgpack.Encoder) error {
@@ -355,12 +373,6 @@ func (m *Member) DecodeMsgpack(d *msgpack.Decoder) error {
 		return err
 	}
 	return nil
-}
-
-type Tuple struct {
-	Cid     uint
-	Orig    string
-	Members []Member
 }
 
 func (c *Tuple) EncodeMsgpack(e *msgpack.Encoder) error {
@@ -424,9 +436,17 @@ func main() {
 		return
 	}
 
+	// same result in magic way.
+	var tuples2 []Tuple2
+	err = conn.SelectTyped(spaceNo, indexNo, 0, 1, IterEq, []interface{}{777}, &tuples2)
+	if err != nil {
+		t.Errorf("Failed to SelectTyped: %s", err.Error())
+		return
+	}
+
 	// call function 'func_name' returning a table of custom tuples
-	var tuples2 []Tuple
-	err = client.CallTyped("func_name", []interface{}{1, 2, 3}, &tuples)
+	var tuples3 []Tuple
+	err = client.CallTyped("func_name", []interface{}{1, 2, 3}, &tuples3)
 	if err != nil {
 		t.Errorf("Failed to CallTyped: %s", err.Error())
 		return

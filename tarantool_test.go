@@ -10,12 +10,6 @@ import (
 	"time"
 )
 
-type Tuple struct {
-	Id   uint
-	Msg  string
-	Name string
-}
-
 type Member struct {
 	Name  string
 	Nonce string
@@ -26,35 +20,6 @@ type Tuple2 struct {
 	Cid     uint
 	Orig    string
 	Members []Member
-}
-
-func (t *Tuple) EncodeMsgpack(e *msgpack.Encoder) error {
-	e.EncodeSliceLen(3)
-	e.EncodeUint(t.Id)
-	e.EncodeString(t.Msg)
-	e.EncodeString(t.Name)
-	return nil
-}
-
-func (t *Tuple) DecodeMsgpack(d *msgpack.Decoder) error {
-	var err error
-	var l int
-	if l, err = d.DecodeSliceLen(); err != nil {
-		return err
-	}
-	if l != 3 {
-		return fmt.Errorf("array len doesn't match: %d", l)
-	}
-	if t.Id, err = d.DecodeUint(); err != nil {
-		return err
-	}
-	if t.Msg, err = d.DecodeString(); err != nil {
-		return err
-	}
-	if t.Name, err = d.DecodeString(); err != nil {
-		return err
-	}
-	return nil
 }
 
 func (m *Member) EncodeMsgpack(e *msgpack.Encoder) error {
@@ -468,7 +433,7 @@ func TestClient(t *testing.T) {
 		}
 	}
 	//resp, err = conn.Insert(spaceNo, []interface{}{uint(1), "hello", "world"})
-	resp, err = conn.Insert(spaceNo, &Tuple{1, "hello", "world"})
+	resp, err = conn.Insert(spaceNo, &Tuple{Id:1, Msg:"hello", Name:"world"})
 	if tntErr, ok := err.(Error); !ok || tntErr.Code != ErrTupleFound {
 		t.Errorf("Expected ErrTupleFound but got: %v", err)
 	}
@@ -995,14 +960,14 @@ func TestComplexStructs(t *testing.T) {
 	}
 	defer conn.Close()
 
-	tuple := Tuple2{777, "orig", []Member{{"lol", "", 1}, {"wut", "", 3}}}
+	tuple := Tuple2{Cid:777, Orig:"orig", Members:[]Member{{"lol", "", 1}, {"wut", "", 3}}}
 	_, err = conn.Replace(spaceNo, &tuple)
 	if err != nil {
 		t.Errorf("Failed to insert: %s", err.Error())
 		return
 	}
 
-	var tuples []Tuple2
+	var tuples [1]Tuple2
 	err = conn.SelectTyped(spaceNo, indexNo, 0, 1, IterEq, []interface{}{777}, &tuples)
 	if err != nil {
 		t.Errorf("Failed to selectTyped: %s", err.Error())

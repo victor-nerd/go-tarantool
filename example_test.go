@@ -6,6 +6,15 @@ import (
 	"time"
 )
 
+type Tuple struct {
+	/* instruct msgpack to pack this struct as array,
+	 * so no custom packer is needed */
+	_msgpack struct{} `msgpack:",asArray"`
+	Id   uint
+	Msg  string
+	Name string
+}
+
 func example_connect() (*tarantool.Connection, error) {
 	conn, err := tarantool.Connect(server, opts)
 	if err != nil {
@@ -63,16 +72,16 @@ func ExampleConnection_SelectTyped() {
 		fmt.Printf("error in select is %v", err)
 		return
 	}
-	fmt.Printf("response is %#v\n", res)
+	fmt.Printf("response is %v\n", res)
 	err = conn.SelectTyped("test", "primary", 0, 100, tarantool.IterEq, tarantool.IntKey{1111}, &res)
 	if err != nil {
 		fmt.Printf("error in select is %v", err)
 		return
 	}
-	fmt.Printf("response is %#v\n", res)
+	fmt.Printf("response is %v\n", res)
 	// Output:
-	// response is []tarantool_test.Tuple{tarantool_test.Tuple{Id:0x457, Msg:"hello", Name:"world"}}
-	// response is []tarantool_test.Tuple{tarantool_test.Tuple{Id:0x457, Msg:"hello", Name:"world"}}
+	// response is [{{} 1111 hello world}]
+	// response is [{{} 1111 hello world}]
 }
 
 func Example() {
@@ -109,7 +118,7 @@ func Example() {
 	fmt.Println("Insert Data", resp.Data)
 
 	// insert new tuple { 11, 1 }
-	resp, err = client.Insert("test", &Tuple{10, "test", "one"})
+	resp, err = client.Insert("test", &Tuple{Id:10, Msg:"test", Name:"one"})
 	fmt.Println("Insert Error", err)
 	fmt.Println("Insert Code", resp.Code)
 	fmt.Println("Insert Data", resp.Data)
@@ -158,8 +167,8 @@ func Example() {
 	fmt.Println("Eval Code", resp.Code)
 	fmt.Println("Eval Data", resp.Data)
 
-	resp, err = client.Replace("test", &Tuple{11, "test", "eleven"})
-	resp, err = client.Replace("test", &Tuple{12, "test", "twelve"})
+	resp, err = client.Replace("test", &Tuple{Id:11, Msg:"test", Name:"eleven"})
+	resp, err = client.Replace("test", &Tuple{Id:12, Msg:"test", Name:"twelve"})
 
 	var futs [3]*tarantool.Future
 	futs[0] = client.SelectAsync("test", "primary", 0, 2, tarantool.IterLe, tarantool.UintKey{12})
@@ -206,7 +215,7 @@ func Example() {
 	// Eval Code 0
 	// Eval Data [3]
 	// Fut 0 Error <nil>
-	// Fut 0 Data [{12 test twelve} {11 test eleven}]
+	// Fut 0 Data [{{} 12 test twelve} {{} 11 test eleven}]
 	// Fut 1 Error <nil>
 	// Fut 1 Data [[13 4]]
 	// Fut 2 Error <nil>
