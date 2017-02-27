@@ -311,11 +311,12 @@ func main() {
 
 ## Custom (un)packing and typed selects and function calls
 
-It's possible to specify custom pack/unpack functions for your types. It will
-allow you to store complex structures inside a tuple and may speed up you requests.
+You can specify custom pack/unpack functions for your types. This will allow you
+to store complex structures inside a tuple and may speed up you requests.
 
-Also you can just instruct msgpack library to encode your struct as an array. It
-will be slower than custom packer/unpacker, but still safe.
+Alternatively, you can just instruct the `msgpack` library to encode your
+structure as an array. This is safe "magic". It will be easier to implement than
+a custom packer/unpacker, but it will work slower.
 
 ```go
 import (
@@ -335,7 +336,7 @@ type Tuple struct {
 	Members []Member
 }
 
-/* same effect in magic way and slower */
+/* same effect in a "magic" way, but slower */
 type Tuple2 struct {
 	_msgpack struct{} `msgpack:",asArray"`
 
@@ -436,7 +437,7 @@ func main() {
 		return
 	}
 
-	// same result in magic way.
+	// same result in a "magic" way
 	var tuples2 []Tuple2
 	err = conn.SelectTyped(spaceNo, indexNo, 0, 1, IterEq, []interface{}{777}, &tuples2)
 	if err != nil {
