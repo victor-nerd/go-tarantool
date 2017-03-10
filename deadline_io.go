@@ -7,7 +7,7 @@ import (
 
 type DeadlineIO struct {
 	to time.Duration
-	c  *net.TCPConn
+	c  net.Conn
 }
 
 func (d *DeadlineIO) Write(b []byte) (n int, err error) {

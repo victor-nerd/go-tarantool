@@ -10,6 +10,7 @@ import (
 	"log"
 	"net"
 	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -78,7 +79,7 @@ var epoch = time.Now()
 // array of arrays.
 type Connection struct {
 	addr  string
-	c     *net.TCPConn
+	c     net.Conn
 	mutex sync.Mutex
 	// Schema contains schema loaded on connection.
 	Schema    *Schema
@@ -280,25 +281,32 @@ func (conn *Connection) Handle() interface{} {
 }
 
 func (conn *Connection) dial() (err error) {
+	const unixSocketKey = `unix/:`
+	var connection net.Conn
+	network := `tcp`
+	address := conn.addr
 	timeout := conn.opts.Reconnect / 2
 	if timeout == 0 {
 		timeout = 500 * time.Millisecond
 	} else if timeout > 5*time.Second {
 		timeout = 5 * time.Second
 	}
-	connection, err := net.DialTimeout("tcp", conn.addr, timeout)
+	// Select tcp/ip or unix socket
+	if npi := len(unixSocketKey); len(address) >= npi && strings.ToLower(address[0:npi]) == unixSocketKey {
+		network = `unix`
+		address = address[npi:]
+	}
+	connection, err = net.DialTimeout(network, address, timeout)
 	if err != nil {
 		return
 	}
-	c := connection.(*net.TCPConn)
-	c.SetNoDelay(true)
-	dc := &DeadlineIO{to: conn.opts.Timeout, c: c}
+	dc := &DeadlineIO{to: conn.opts.Timeout, c: connection}
 	r := bufio.NewReaderSize(dc, 128*1024)
 	w := bufio.NewWriterSize(dc, 128*1024)
 	greeting := make([]byte, 128)
 	_, err = io.ReadFull(r, greeting)
 	if err != nil {
-		c.Close()
+		connection.Close()
 		return
 	}
 	conn.Greeting.Version = bytes.NewBuffer(greeting[:64]).String()
@@ -309,26 +317,26 @@ func (conn *Connection) dial() (err error) {
 		scr, err := scramble(conn.Greeting.auth, conn.opts.Pass)
 		if err != nil {
 			err = errors.New("auth: scrambling failure " + err.Error())
-			c.Close()
+			connection.Close()
 			return err
 		}
 		if err = conn.writeAuthRequest(w, scr); err != nil {
-			c.Close()
+			connection.Close()
 			return err
 		}
 		if err = conn.readAuthResponse(r); err != nil {
-			c.Close()
+			connection.Close()
 			return err
 		}
 	}
 
 	// Only if connected and authenticated
 	conn.lockShards()
-	conn.c = c
+	conn.c = connection
 	atomic.StoreUint32(&conn.state, connConnected)
 	conn.unlockShards()
-	go conn.writer(w, c)
-	go conn.reader(r, c)
+	go conn.writer(w, connection)
+	go conn.reader(r, connection)
 
 	return
 }
@@ -443,7 +451,7 @@ func (conn *Connection) closeConnection(neterr error, forever bool) (err error) 
 	return
 }
 
-func (conn *Connection) reconnect(neterr error, c *net.TCPConn) {
+func (conn *Connection) reconnect(neterr error, c net.Conn) {
 	conn.mutex.Lock()
 	defer conn.mutex.Unlock()
 	if conn.opts.Reconnect > 0 {
@@ -498,7 +506,7 @@ func (conn *Connection) notify(kind ConnEventKind) {
 	}
 }
 
-func (conn *Connection) writer(w *bufio.Writer, c *net.TCPConn) {
+func (conn *Connection) writer(w *bufio.Writer, c net.Conn) {
 	var shardn uint32
 	var packet smallWBuf
 	for atomic.LoadUint32(&conn.state) != connClosed {
@@ -538,7 +546,7 @@ func (conn *Connection) writer(w *bufio.Writer, c *net.TCPConn) {
 	}
 }
 
-func (conn *Connection) reader(r *bufio.Reader, c *net.TCPConn) {
+func (conn *Connection) reader(r *bufio.Reader, c net.Conn) {
 	for atomic.LoadUint32(&conn.state) != connClosed {
 		respBytes, err := conn.read(r)
 		if err != nil {
