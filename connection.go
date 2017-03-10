@@ -282,7 +282,9 @@ func (conn *Connection) Handle() interface{} {
 
 func (conn *Connection) dial() (err error) {
 	const unixSocketKey = `unix/:`
+	const tcpIpKey = `tcp:`
 	var connection net.Conn
+	var i int
 	network := `tcp`
 	address := conn.addr
 	timeout := conn.opts.Reconnect / 2
@@ -291,10 +293,12 @@ func (conn *Connection) dial() (err error) {
 	} else if timeout > 5*time.Second {
 		timeout = 5 * time.Second
 	}
-	// Select tcp/ip or unix socket
-	if npi := len(unixSocketKey); len(address) >= npi && strings.ToLower(address[0:npi]) == unixSocketKey {
+	// Unix socket connection
+	if i = len(unixSocketKey); len(address) >= i && strings.ToLower(address[0:i]) == unixSocketKey {
 		network = `unix`
-		address = address[npi:]
+		address = address[i:]
+	} else if i = len(tcpIpKey); len(address) >= i && strings.ToLower(address[0:i]) == tcpIpKey {
+		address = address[i:]
 	}
 	connection, err = net.DialTimeout(network, address, timeout)
 	if err != nil {
