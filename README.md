@@ -121,6 +121,7 @@ import (
 func main() {
    opts := tarantool.Opts{User: "guest"}
    conn, err := tarantool.Connect("127.0.0.1:3301", opts)
+   // conn, err := tarantool.Connect("/path/to/tarantool.socket", opts)
    if err != nil {
        fmt.Println("Connection refused: %s", err.Error())
    }

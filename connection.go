@@ -164,6 +164,22 @@ type Opts struct {
 
 // Connect creates and configures new Connection
 //
+// Address could be specified in following ways:
+//
+// TCP connections:
+// - tcp://192.168.1.1:3013
+// - tcp://my.host:3013
+// - tcp:192.168.1.1:3013
+// - tcp:my.host:3013
+// - 192.168.1.1:3013
+// - my.host:3013
+// Unix socket:
+// - unix:///abs/path/tnt.sock
+// - unix:path/tnt.sock
+// - /abs/path/tnt.sock  - first '/' indicates unix socket
+// - ./rel/path/tnt.sock - first '.' indicates unix socket
+// - unix/:path/tnt.sock  - 'unix/' acts as a "host" and "/path..." as a port
+//
 // Note:
 //
 // - If opts.Reconnect is zero (default), then connection either already connected
@@ -281,11 +297,9 @@ func (conn *Connection) Handle() interface{} {
 }
 
 func (conn *Connection) dial() (err error) {
-	const unixSocketKey = `unix/:`
-	const tcpIpKey = `tcp:`
 	var connection net.Conn
 	var i int
-	network := `tcp`
+	network := "tcp"
 	address := conn.addr
 	timeout := conn.opts.Reconnect / 2
 	if timeout == 0 {
@@ -294,11 +308,21 @@ func (conn *Connection) dial() (err error) {
 		timeout = 5 * time.Second
 	}
 	// Unix socket connection
-	if i = len(unixSocketKey); len(address) >= i && strings.ToLower(address[0:i]) == unixSocketKey {
-		network = `unix`
-		address = address[i:]
-	} else if i = len(tcpIpKey); len(address) >= i && strings.ToLower(address[0:i]) == tcpIpKey {
-		address = address[i:]
+	if address[0] == '.' || address [0] == '/' {
+		network = "unix"
+	} else if address[0:7] == "unix://" {
+		network = "unix"
+		address = address[7:]
+	} else if address[0:5] == "unix:" {
+		network = "unix"
+		address = address[5:]
+	} else if address[0:6] == "unix/:" {
+		network = "unix"
+		address = address[6:]
+	} else if address[0:6] == "tcp://" {
+		address = address[6:]
+	} else if address[0:4] == "tcp:" {
+		address = address[4:]
 	}
 	connection, err = net.DialTimeout(network, address, timeout)
 	if err != nil {
