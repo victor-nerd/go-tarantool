@@ -10,7 +10,6 @@ import (
 	"log"
 	"net"
 	"runtime"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -298,7 +297,6 @@ func (conn *Connection) Handle() interface{} {
 
 func (conn *Connection) dial() (err error) {
 	var connection net.Conn
-	var i int
 	network := "tcp"
 	address := conn.addr
 	timeout := conn.opts.Reconnect / 2
