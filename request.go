@@ -313,6 +313,10 @@ func (conn *Connection) EvalAsync(expr string, args interface{}) *Future {
 	})
 }
 
+func (conn *Connection) NewQueue(name string, cfg queueCfg) (queue, error) {
+	return newQueue(conn, name, cfg)
+}
+
 //
 // private
 //

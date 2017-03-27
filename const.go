@@ -50,3 +50,21 @@ const (
 	ErrorCodeBit      = 0x8000
 	PacketLengthBytes = 5
 )
+
+
+const (
+	READY = "r"
+	TAKEN = "t"
+	DONE = "-"
+	BURIED = "!"
+	DELAYED = "~"
+)
+
+type queueType string
+
+const (
+	FIFO_QUEUE queueType = "fifo"
+	FIFO_TTL_QUEUE queueType = "fifottl"
+	UTUBE_QUEUE queueType = "utube"
+	UTUBE_TTL_QUEUE queueType = "utubettl"
+)
