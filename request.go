@@ -317,6 +317,10 @@ func (conn *Connection) NewQueue(name string, cfg queueCfg) (queue, error) {
 	return newQueue(conn, name, cfg)
 }
 
+func (conn *Connection) GetQueue(name string) (queue, error) {
+	return getQueue(conn, name)
+}
+
 //
 // private
 //

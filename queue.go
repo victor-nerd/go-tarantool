@@ -89,47 +89,78 @@ func (opts QueueOpts) toMap() map[string]interface{} {
 }
 
 func newQueue(conn *Connection, name string, cfg queueCfg) (queue, error) {
+	var q queue
 	cmd := fmt.Sprintf("queue.create_tube('%s', '%s', %s)", name, cfg.Type(), cfg.String())
-	fmt.Println("STAETL: ", cmd)
 	fut := conn.EvalAsync(cmd, []interface{}{})
 	fut.wait()
-	return queue{
-		name,
-		conn,
-		makeCmdMap(name),
-	}, fut.err
+	if fut.err == nil {
+		q = queue{
+			name,
+			conn,
+			makeCmdMap(name),
+		}
+	}
+	return q, fut.err
+}
+
+func getQueue(conn *Connection, name string) (queue, error) {
+	var q queue
+	cmd := fmt.Sprintf("return queue.tube.%s ~= null", name)
+	resp, err := conn.Eval(cmd, []interface{}{})
+	if err != nil {
+		return q, err
+	}
+
+	exist := len(resp.Data) != 0 && resp.Data[0].(bool)
+
+	if exist {
+		q = queue{
+			name,
+			conn,
+			makeCmdMap(name),
+		}
+	} else {
+		err = fmt.Errorf("Tube %s does not exist", name)
+	}
+
+	return q, err
 }
 
 func (q queue) Put(data interface{}) (uint64, error) {
-	resp, err := q.conn.Call(q.cmd["put"], []interface{}{data})
-	return convertRsponseToTubeData(resp.Data).id, err
+	return q.put(data)
 }
 
 func (q queue) PutWithConfig(data interface{}, cfg QueueOpts) (uint64, error) {
-	resp, err := q.conn.Call(q.cmd["put"], []interface{}{data, cfg.toMap()})
-	return convertRsponseToTubeData(resp.Data).id, err
+	return q.put(data, cfg.toMap())
 }
 
-func (q queue) Take() (TubeData, error) {
+func (q queue) put(p... interface{}) (uint64, error) {
+	var (
+		params []interface{}
+		id uint64
+	)
+	params = append(params, p...)
+	resp, err := q.conn.Call(q.cmd["put"], params)
+	if err != nil {
+		id = convertRsponseToTask(resp.Data).id
+	}
+
+	return id, err
+}
+
+func (q queue) Take() (Task, error) {
 	return q.take(nil)
 }
 
-func (q queue) TakeWithTimeout(timeout time.Duration) (TubeData, error) {
+func (q queue) TakeWithTimeout(timeout time.Duration) (Task, error) {
 	return q.take(timeout.Seconds())
 }
 
-func (q queue) take(params interface{}) (TubeData, error) {
-	var t TubeData
+func (q queue) take(params interface{}) (Task, error) {
+	var t Task
 	resp, err := q.conn.Call(q.cmd["take"], []interface{}{params})
-	if err == nil && len(resp.Data) != 0 {
-		data, ok := resp.Data[0].([]interface{})
-		if ok && len(data) >= 3 {
-			t = TubeData{
-				data[0].(uint64),
-				data[1].(string),
-				data[2],
-			}
-		}
+	if err == nil {
+		t = convertRsponseToTask(resp.Data)
 	}
 	return t, err
 }
@@ -139,13 +170,13 @@ func (q queue) Drop() error {
 	return err
 }
 
-func (q queue) Peek(taskId uint64) (TubeData, error) {
+func (q queue) Peek(taskId uint64) (Task, error) {
 	resp, err := q.conn.Call(q.cmd["peek"], []interface{}{taskId})
 	if err != nil {
-		return DEFAULT_TUBE_DATA, err
+		return DEFAULT_TASK, err
 	}
 
-	return convertRsponseToTubeData(resp.Data), nil
+	return convertRsponseToTask(resp.Data), nil
 }
 
 func (q queue) Ack(taskId uint64) error {
@@ -203,8 +234,8 @@ func makeCmdMap(name string) map[string]string {
 	}
 }
 
-func convertRsponseToTubeData(responseData []interface{}) TubeData {
-	t := DEFAULT_TUBE_DATA
+func convertRsponseToTask(responseData []interface{}) Task {
+	t := DEFAULT_TASK
 	if len(responseData) != 0 {
 		data, ok := responseData[0].([]interface{})
 		if ok && len(data) >= 3 {
