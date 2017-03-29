@@ -2,8 +2,8 @@ package tarantool
 
 import (
 	"fmt"
-	"time"
 	"strings"
+	"time"
 )
 
 type queue struct {
@@ -18,9 +18,9 @@ type queueCfg interface {
 }
 
 type QueueCfg struct {
-	Temporary bool
+	Temporary   bool
 	IfNotExists bool
-	Kind queueType
+	Kind        queueType
 }
 
 func (cfg QueueCfg) String() string {
@@ -37,9 +37,9 @@ type TtlQueueCfg struct {
 }
 
 type QueueOpts struct {
-	Pri int
-	Ttl time.Duration
-	Ttr time.Duration
+	Pri   int
+	Ttl   time.Duration
+	Ttr   time.Duration
 	Delay time.Duration
 }
 
@@ -84,6 +84,8 @@ func (opts QueueOpts) toMap() map[string]interface{} {
 	if opts.Delay.Seconds() != 0 {
 		ret["delay"] = opts.Delay.Seconds()
 	}
+
+	ret["pri"] = opts.Pri
 
 	return ret
 }
@@ -134,33 +136,37 @@ func (q queue) PutWithConfig(data interface{}, cfg QueueOpts) (uint64, error) {
 	return q.put(data, cfg.toMap())
 }
 
-func (q queue) put(p... interface{}) (uint64, error) {
+func (q queue) put(p ...interface{}) (uint64, error) {
 	var (
 		params []interface{}
-		id uint64
+		id     uint64
 	)
 	params = append(params, p...)
 	resp, err := q.conn.Call(q.cmd["put"], params)
-	if err != nil {
-		id = convertRsponseToTask(resp.Data).id
+	if err == nil {
+		var task *Task
+		task, err = toTask(resp.Data, &q)
+		if err == nil {
+			id = task.id
+		}
 	}
 
 	return id, err
 }
 
-func (q queue) Take() (Task, error) {
+func (q queue) Take() (*Task, error) {
 	return q.take(nil)
 }
 
-func (q queue) TakeWithTimeout(timeout time.Duration) (Task, error) {
+func (q queue) TakeWithTimeout(timeout time.Duration) (*Task, error) {
 	return q.take(timeout.Seconds())
 }
 
-func (q queue) take(params interface{}) (Task, error) {
-	var t Task
+func (q queue) take(params interface{}) (*Task, error) {
+	var t *Task
 	resp, err := q.conn.Call(q.cmd["take"], []interface{}{params})
 	if err == nil {
-		t = convertRsponseToTask(resp.Data)
+		t, err = toTask(resp.Data, &q)
 	}
 	return t, err
 }
@@ -170,26 +176,28 @@ func (q queue) Drop() error {
 	return err
 }
 
-func (q queue) Peek(taskId uint64) (Task, error) {
+func (q queue) Peek(taskId uint64) (*Task, error) {
 	resp, err := q.conn.Call(q.cmd["peek"], []interface{}{taskId})
 	if err != nil {
-		return DEFAULT_TASK, err
+		return nil, err
 	}
 
-	return convertRsponseToTask(resp.Data), nil
+	t, err := toTask(resp.Data, &q)
+
+	return t, err
 }
 
-func (q queue) Ack(taskId uint64) error {
+func (q queue) _ack(taskId uint64) error {
 	_, err := q.conn.Call(q.cmd["ack"], []interface{}{taskId})
 	return err
 }
 
-func (q queue) Delete(taskId uint64) error {
+func (q queue) _delete(taskId uint64) error {
 	_, err := q.conn.Call(q.cmd["delete"], []interface{}{taskId})
 	return err
 }
 
-func (q queue) Bury(taskId uint64) error {
+func (q queue) _bury(taskId uint64) error {
 	_, err := q.conn.Call(q.cmd["bury"], []interface{}{taskId})
 	return err
 }
@@ -219,7 +227,6 @@ func (q queue) Statistic() (interface{}, error) {
 	return nil, nil
 }
 
-
 func makeCmdMap(name string) map[string]string {
 	return map[string]string{
 		"put":        "queue.tube." + name + ":put",
@@ -234,16 +241,18 @@ func makeCmdMap(name string) map[string]string {
 	}
 }
 
-func convertRsponseToTask(responseData []interface{}) Task {
-	t := DEFAULT_TASK
+func toTask(responseData []interface{}, q *queue) (*Task, error) {
 	if len(responseData) != 0 {
 		data, ok := responseData[0].([]interface{})
 		if ok && len(data) >= 3 {
-			t.id = data[0].(uint64)
-			t.status = data[1].(string)
-			t.data = data[2]
+			return &Task{
+				data[0].(uint64),
+				data[1].(string),
+				data[2],
+				q,
+			}, nil
 		}
 	}
 
-	return t
+	return nil, nil
 }

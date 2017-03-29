@@ -1,41 +1,52 @@
 package tarantool
 
 type Task struct {
-	id uint64
+	id     uint64
 	status string
-	data interface{}
+	data   interface{}
+	q      *queue
 }
 
-var DEFAULT_TASK = Task{}
-
-func (t Task) GetId() uint64 {
+func (t *Task) GetId() uint64 {
 	return t.id
 }
 
-func (t Task) GetData() interface{} {
+func (t *Task) GetData() interface{} {
 	return t.data
 }
 
-func (t Task) GetStatus() string {
+func (t *Task) GetStatus() string {
 	return t.status
 }
 
-func (t Task) IsReady() bool {
+func (t *Task) Ack() error {
+	return t.q._ack(t.id)
+}
+
+func (t *Task) Delete() error {
+	return t.q._delete(t.id)
+}
+
+func (t *Task) Bury() error {
+	return t.q._bury(t.id)
+}
+
+func (t *Task) IsReady() bool {
 	return t.status == READY
 }
 
-func (t Task) IsTaken() bool {
+func (t *Task) IsTaken() bool {
 	return t.status == TAKEN
 }
 
-func (t Task) IsDone() bool {
+func (t *Task) IsDone() bool {
 	return t.status == DONE
 }
 
-func (t Task) IsBuried() bool {
+func (t *Task) IsBuried() bool {
 	return t.status == BURIED
 }
 
-func (t Task) IsDelayed() bool {
+func (t *Task) IsDelayed() bool {
 	return t.status == DELAYED
 }
