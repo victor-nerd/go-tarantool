@@ -6,6 +6,17 @@ import (
 	"time"
 )
 
+type Queue interface {
+	Put(data interface{}) (*Task, error)
+	PutWithConfig(data interface{}, cfg QueueOpts) (*Task, error)
+	Take() (*Task, error)
+	TakeWithTimeout(timeout time.Duration) (*Task, error)
+	Drop() error
+	Peek(taskId uint64) (*Task, error)
+	Kick(taskId uint64) (uint64, error)
+	Statistic() (interface{}, error)
+}
+
 type queue struct {
 	name string
 	conn *Connection
@@ -183,23 +194,50 @@ func (q queue) Peek(taskId uint64) (*Task, error) {
 	return t, err
 }
 
-func (q queue) _ack(taskId uint64) error {
-	_, err := q.conn.Call(q.cmd["ack"], []interface{}{taskId})
-	return err
+func (q queue) _ack(taskId uint64) (string, error) {
+	resp, err := q.conn.Call(q.cmd["ack"], []interface{}{taskId})
+	if err != nil {
+		return "", err
+	}
+
+	t, err := toTask(resp.Data, &q)
+	if err != nil {
+		return "", err
+	}
+
+	return t.status, nil
 }
 
-func (q queue) _delete(taskId uint64) error {
-	_, err := q.conn.Call(q.cmd["delete"], []interface{}{taskId})
-	return err
+func (q queue) _delete(taskId uint64) (string, error) {
+	resp, err := q.conn.Call(q.cmd["delete"], []interface{}{taskId})
+	if err != nil {
+		return "", err
+	}
+
+	t, err := toTask(resp.Data, &q)
+	if err != nil {
+		return "", err
+	}
+
+	return t.status, nil
 }
 
-func (q queue) _bury(taskId uint64) error {
-	_, err := q.conn.Call(q.cmd["bury"], []interface{}{taskId})
-	return err
+func (q queue) _bury(taskId uint64) (string, error) {
+	resp, err := q.conn.Call(q.cmd["bury"], []interface{}{taskId})
+	if err != nil {
+		return "", err
+	}
+
+	t, err := toTask(resp.Data, &q)
+	if err != nil {
+		return "", err
+	}
+
+	return t.status, nil
 }
 
-func (q queue) Kick(taskId uint64) (uint64, error) {
-	resp, err := q.conn.Call(q.cmd["kick"], []interface{}{taskId})
+func (q queue) Kick(count uint64) (uint64, error) {
+	resp, err := q.conn.Call(q.cmd["kick"], []interface{}{count})
 	var id uint64
 	if err == nil {
 		id = resp.Data[0].([]interface{})[0].(uint64)

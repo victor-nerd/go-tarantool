@@ -20,15 +20,33 @@ func (t *Task) GetStatus() string {
 }
 
 func (t *Task) Ack() error {
-	return t.q._ack(t.id)
+	newStatus, err := t.q._ack(t.id)
+	if err != nil {
+		return err
+	}
+
+	t.status = newStatus
+	return nil
 }
 
 func (t *Task) Delete() error {
-	return t.q._delete(t.id)
+	newStatus, err := t.q._delete(t.id)
+	if err != nil {
+		return err
+	}
+
+	t.status = newStatus
+	return nil
 }
 
 func (t *Task) Bury() error {
-	return t.q._bury(t.id)
+	newStatus, err := t.q._bury(t.id)
+	if err != nil {
+		return err
+	}
+
+	t.status = newStatus
+	return nil
 }
 
 func (t *Task) IsReady() bool {
