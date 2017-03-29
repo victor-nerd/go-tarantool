@@ -128,30 +128,26 @@ func getQueue(conn *Connection, name string) (queue, error) {
 	return q, err
 }
 
-func (q queue) Put(data interface{}) (uint64, error) {
+func (q queue) Put(data interface{}) (*Task, error) {
 	return q.put(data)
 }
 
-func (q queue) PutWithConfig(data interface{}, cfg QueueOpts) (uint64, error) {
+func (q queue) PutWithConfig(data interface{}, cfg QueueOpts) (*Task, error) {
 	return q.put(data, cfg.toMap())
 }
 
-func (q queue) put(p ...interface{}) (uint64, error) {
+func (q queue) put(p ...interface{}) (*Task, error) {
 	var (
 		params []interface{}
-		id     uint64
+		task *Task
 	)
 	params = append(params, p...)
 	resp, err := q.conn.Call(q.cmd["put"], params)
 	if err == nil {
-		var task *Task
 		task, err = toTask(resp.Data, &q)
-		if err == nil {
-			id = task.id
-		}
 	}
 
-	return id, err
+	return task, err
 }
 
 func (q queue) Take() (*Task, error) {
