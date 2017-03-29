@@ -37,8 +37,8 @@ const (
 	IterAll           = uint32(2) // all tuples
 	IterLt            = uint32(3) // key < x
 	IterLe            = uint32(4) // key <= x
-	IterGe            = uint32(5) // key > x
-	IterGt            = uint32(6) // key >= x
+	IterGe            = uint32(5) // key >= x
+	IterGt            = uint32(6) // key > x
 	IterBitsAllSet    = uint32(7) // all bits from x are set in key
 	IterBitsAnySet    = uint32(8) // at least one x's bit is set
 	IterBitsAllNotSet = uint32(9) // all bits are not set
