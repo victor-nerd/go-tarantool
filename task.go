@@ -20,17 +20,19 @@ func (t *Task) GetStatus() string {
 }
 
 func (t *Task) Ack() error {
-	newStatus, err := t.q._ack(t.id)
-	if err != nil {
-		return err
-	}
-
-	t.status = newStatus
-	return nil
+	return t.produce(t.q._ack)
 }
 
 func (t *Task) Delete() error {
-	newStatus, err := t.q._delete(t.id)
+	return t.produce(t.q._delete)
+}
+
+func (t *Task) Bury() error {
+	return t.produce(t.q._bury)
+}
+
+func (t *Task) produce(f func(taskId uint64) (string, error)) error {
+	newStatus, err := f(t.id)
 	if err != nil {
 		return err
 	}
@@ -39,8 +41,16 @@ func (t *Task) Delete() error {
 	return nil
 }
 
-func (t *Task) Bury() error {
-	newStatus, err := t.q._bury(t.id)
+func (t *Task) Release() error {
+	return t.release(QueueOpts{})
+}
+
+func (t *Task) ReleaseWithCinfig(cfg QueueOpts) error {
+	return t.release(cfg)
+}
+
+func (t *Task) release(cfg QueueOpts) error {
+	newStatus, err := t.q._release(t.id, cfg)
 	if err != nil {
 		return err
 	}

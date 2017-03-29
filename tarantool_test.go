@@ -987,7 +987,7 @@ func TestComplexStructs(t *testing.T) {
 
 /////////QUEUE/////////
 
-func TestFifoQueue_Create(t *testing.T)  {
+func TestFifoQueue(t *testing.T)  {
 	conn, err := Connect(server, opts)
 	if err != nil {
 		t.Errorf("Failed to connect: %s", err.Error())
@@ -1006,6 +1006,51 @@ func TestFifoQueue_Create(t *testing.T)  {
 		return
 	}
 
+	//Drop
+	err = q.Drop()
+	if err != nil {
+		t.Errorf("Failed drop queue: %s", err.Error())
+	}
+}
+
+func TestFifoQueue_GetExist_Statistic(t *testing.T)  {
+	conn, err := Connect(server, opts)
+	if err != nil {
+		t.Errorf("Failed to connect: %s", err.Error())
+		return
+	}
+	if conn == nil {
+		t.Errorf("conn is nil after Connect")
+		return
+	}
+	defer conn.Close()
+
+	name := "test_queue"
+	_, err = conn.NewQueue(name, QueueCfg{Temporary: true, Kind: FIFO_QUEUE})
+	if err != nil {
+		t.Errorf("Failed to create queue: %s", err.Error())
+		return
+	}
+
+	q, err := conn.GetQueue(name)
+	if err != nil {
+		t.Errorf("Failed to get exist queue: %s", err.Error())
+		return
+	}
+
+	putData := "put_data"
+	_, err = q.Put(putData)
+	if err != nil {
+		t.Errorf("Failed to put queue: %s", err.Error())
+		return
+	}
+
+	stat, err := q.Statistic()
+	if err != nil {
+		t.Errorf("Failed to get statistic queue: %s", err.Error())
+	} else if stat == nil {
+		t.Error("Statistic is nil")
+	}
 	//Drop
 	err = q.Drop()
 	if err != nil {
@@ -1329,6 +1374,96 @@ func TestFifoQueue_Delete(t *testing.T)  {
 	}
 }
 
+func TestFifoQueue_Release(t *testing.T) {
+	conn, err := Connect(server, opts)
+	if err != nil {
+		t.Errorf("Failed to connect: %s", err.Error())
+		return
+	}
+	if conn == nil {
+		t.Errorf("conn is nil after Connect")
+		return
+	}
+	defer conn.Close()
+
+	name := "test_queue"
+	q, err := conn.NewQueue(name, QueueCfg{Temporary: true, Kind: FIFO_QUEUE})
+	if err != nil {
+		t.Errorf("Failed to create queue: %s", err.Error())
+		return
+	}
+
+	defer func() {
+		//Drop
+		err := q.Drop()
+		if err != nil {
+			t.Errorf("Failed drop queue: %s", err.Error())
+		}
+	}()
+
+	putData := "put_data"
+	task, err := q.Put(putData)
+	if err != nil {
+		t.Errorf("Failed put to queue: %s", err.Error())
+		return
+	} else if err == nil && task == nil {
+		t.Errorf("Task is nil after put")
+		return
+	} else {
+		if task.GetData() != putData {
+			t.Errorf("Task data after put not equal with example. %s != %s", task.GetData(), putData)
+		}
+	}
+
+	//Take
+	task, err = q.Take()
+	if err != nil {
+		t.Errorf("Failed take from queue: %s", err.Error())
+		return
+	} else if task == nil {
+		t.Error("Task is nil after take")
+		return
+	}
+
+	//Release
+	err = task.Release()
+	if err != nil {
+		t.Errorf("Failed release task% %s", err.Error())
+		return
+	}
+
+	if !task.IsReady() {
+		t.Errorf("Task status is not ready, but %s", task.GetStatus())
+		return
+	}
+
+
+	//Take
+	task, err = q.Take()
+	if err != nil {
+		t.Errorf("Failed take from queue: %s", err.Error())
+		return
+	} else if task == nil {
+		t.Error("Task is nil after take")
+		return
+	} else {
+		if task.GetData() != putData {
+			t.Errorf("Task data after take not equal with example. %s != %s", task.GetData(), putData)
+		}
+
+		if !task.IsTaken() {
+			t.Errorf("Task status after take is not taken. Status = ", task.GetStatus())
+		}
+
+		err  = task.Ack()
+		if err != nil {
+			t.Errorf("Failed ack %s", err.Error())
+		} else if !task.IsDone() {
+			t.Errorf("Task status after take is not done. Status = ", task.GetStatus())
+		}
+	}
+}
+
 func TestTtlQueue(t *testing.T) {
 	conn, err := Connect(server, opts)
 	if err != nil {
@@ -1352,6 +1487,14 @@ func TestTtlQueue(t *testing.T) {
 		return
 	}
 
+	defer func() {
+		//Drop
+		err := q.Drop()
+		if err != nil {
+			t.Errorf("Failed drop queue: %s", err.Error())
+		}
+	}()
+
 	putData := "put_data"
 	task, err := q.Put(putData)
 	if err != nil {
@@ -1366,7 +1509,7 @@ func TestTtlQueue(t *testing.T) {
 		}
 	}
 
-	time.Sleep(1 * time.Second)
+	time.Sleep(5 * time.Second)
 
 	//Take
 	task, err = q.TakeWithTimeout(2 * time.Second)
@@ -1374,12 +1517,6 @@ func TestTtlQueue(t *testing.T) {
 		t.Errorf("Failed take from queue: %s", err.Error())
 	} else if task != nil {
 		t.Errorf("Task is not nil after sleep")
-	}
-
-	//Drop
-	err = q.Drop()
-	if err != nil {
-		t.Errorf("Failed drop queue: %s", err.Error())
 	}
 }
 
@@ -1405,6 +1542,14 @@ func TestTtlQueue_Put(t *testing.T) {
 		t.Errorf("Failed to create queue: %s", err.Error())
 		return
 	}
+
+	defer func() {
+		//Drop
+		err := q.Drop()
+		if err != nil {
+			t.Errorf("Failed drop queue: %s", err.Error())
+		}
+	}()
 
 	putData := "put_data"
 	task, err := q.PutWithConfig(putData, QueueOpts{Ttl: 10 * time.Second})
@@ -1443,11 +1588,5 @@ func TestTtlQueue_Put(t *testing.T) {
 		} else if !task.IsDone() {
 			t.Errorf("Task status after take is not done. Status = ", task.GetStatus())
 		}
-	}
-
-	//Drop
-	err = q.Drop()
-	if err != nil {
-		t.Errorf("Failed drop queue: %s", err.Error())
 	}
 }

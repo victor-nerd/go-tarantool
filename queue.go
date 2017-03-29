@@ -96,12 +96,14 @@ func (opts QueueOpts) toMap() map[string]interface{} {
 		ret["delay"] = opts.Delay.Seconds()
 	}
 
-	ret["pri"] = opts.Pri
+	if opts.Pri != 0 {
+		ret["pri"] = opts.Pri
+	}
 
 	return ret
 }
 
-func newQueue(conn *Connection, name string, cfg queueCfg) (queue, error) {
+func newQueue(conn *Connection, name string, cfg queueCfg) (Queue, error) {
 	var q queue
 	cmd := fmt.Sprintf("queue.create_tube('%s', '%s', %s)", name, cfg.Type(), cfg.String())
 	fut := conn.EvalAsync(cmd, []interface{}{})
@@ -116,7 +118,7 @@ func newQueue(conn *Connection, name string, cfg queueCfg) (queue, error) {
 	return q, fut.err
 }
 
-func getQueue(conn *Connection, name string) (queue, error) {
+func getQueue(conn *Connection, name string) (Queue, error) {
 	var q queue
 	cmd := fmt.Sprintf("return queue.tube.%s ~= null", name)
 	resp, err := conn.Eval(cmd, []interface{}{})
@@ -150,7 +152,7 @@ func (q queue) PutWithConfig(data interface{}, cfg QueueOpts) (*Task, error) {
 func (q queue) put(p ...interface{}) (*Task, error) {
 	var (
 		params []interface{}
-		task *Task
+		task   *Task
 	)
 	params = append(params, p...)
 	resp, err := q.conn.Call(q.cmd["put"], params)
@@ -206,8 +208,13 @@ func (q queue) _bury(taskId uint64) (string, error) {
 	return q.produce("bury", taskId)
 }
 
-func (q queue) produce(cmd string, taskId uint64) (string, error) {
-	resp, err := q.conn.Call(q.cmd[cmd], []interface{}{taskId})
+func (q queue) _release(taskId uint64, cfg QueueOpts) (string, error) {
+	return q.produce("release", taskId, cfg.toMap())
+}
+func (q queue) produce(cmd string, p ...interface{}) (string, error) {
+	var params []interface{}
+	params = append(params, p...)
+	resp, err := q.conn.Call(q.cmd[cmd], params)
 	if err != nil {
 		return "", err
 	}
@@ -254,6 +261,7 @@ func makeCmdMap(name string) map[string]string {
 		"delete":     "queue.tube." + name + ":delete",
 		"bury":       "queue.tube." + name + ":bury",
 		"kick":       "queue.tube." + name + ":kick",
+		"release":    "queue.tube." + name + ":release",
 		"statistics": "queue.statistics",
 	}
 }
