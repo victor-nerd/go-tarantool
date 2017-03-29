@@ -195,35 +195,19 @@ func (q queue) Peek(taskId uint64) (*Task, error) {
 }
 
 func (q queue) _ack(taskId uint64) (string, error) {
-	resp, err := q.conn.Call(q.cmd["ack"], []interface{}{taskId})
-	if err != nil {
-		return "", err
-	}
-
-	t, err := toTask(resp.Data, &q)
-	if err != nil {
-		return "", err
-	}
-
-	return t.status, nil
+	return q.produce("ack", taskId)
 }
 
 func (q queue) _delete(taskId uint64) (string, error) {
-	resp, err := q.conn.Call(q.cmd["delete"], []interface{}{taskId})
-	if err != nil {
-		return "", err
-	}
-
-	t, err := toTask(resp.Data, &q)
-	if err != nil {
-		return "", err
-	}
-
-	return t.status, nil
+	return q.produce("delete", taskId)
 }
 
 func (q queue) _bury(taskId uint64) (string, error) {
-	resp, err := q.conn.Call(q.cmd["bury"], []interface{}{taskId})
+	return q.produce("bury", taskId)
+}
+
+func (q queue) produce(cmd string, taskId uint64) (string, error) {
+	resp, err := q.conn.Call(q.cmd[cmd], []interface{}{taskId})
 	if err != nil {
 		return "", err
 	}
@@ -232,7 +216,6 @@ func (q queue) _bury(taskId uint64) (string, error) {
 	if err != nil {
 		return "", err
 	}
-
 	return t.status, nil
 }
 
