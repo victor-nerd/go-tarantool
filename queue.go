@@ -106,16 +106,15 @@ func (opts QueueOpts) toMap() map[string]interface{} {
 func newQueue(conn *Connection, name string, cfg queueCfg) (Queue, error) {
 	var q queue
 	cmd := fmt.Sprintf("queue.create_tube('%s', '%s', %s)", name, cfg.Type(), cfg.String())
-	fut := conn.EvalAsync(cmd, []interface{}{})
-	fut.wait()
-	if fut.err == nil {
+	_, err := conn.Eval(cmd, []interface{}{})
+	if err == nil {
 		q = queue{
 			name,
 			conn,
 			makeCmdMap(name),
 		}
 	}
-	return q, fut.err
+	return q, err
 }
 
 func getQueue(conn *Connection, name string) (Queue, error) {
@@ -164,10 +163,17 @@ func (q queue) put(p ...interface{}) (*Task, error) {
 }
 
 func (q queue) Take() (*Task, error) {
-	return q.take(nil)
+	var params interface{}
+	if q.conn.opts.Timeout > 0 {
+		params = q.conn.opts.Timeout.Seconds()
+	}
+	return q.take(params)
 }
 
 func (q queue) TakeWithTimeout(timeout time.Duration) (*Task, error) {
+	if q.conn.opts.Timeout > 0 && timeout > q.conn.opts.Timeout {
+		timeout = q.conn.opts.Timeout
+	}
 	return q.take(timeout.Seconds())
 }
 

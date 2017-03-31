@@ -26,6 +26,7 @@ faster than other packages according to public benchmarks.
 * [Schema](#schema)
 * [Custom (un)packing and typed selects and function calls](#custom-unpacking-and-typed-selects-and-function-calls)
 * [Options](#options)
+* [Working with queue](#working-with-queue)
 
 ## Installation
 
@@ -280,7 +281,7 @@ func main() {
 	log.Println("Code", resp.Code)
 	log.Println("Data", resp.Data)
 }
-```
+``` 
 
 ## Schema
 
@@ -499,3 +500,47 @@ func decodeTuple(d *msgpack.Decoder, v reflect.Value) error {
   up. If `MaxReconnects` is zero, the client will try to reconnect endlessly.
 * `User` - user name to log into Tarantool.
 * `Pass` - user password to log into Tarantool.
+
+## Working-with-queue
+```go
+opts := tarantool.Opts{...}
+conn, err := tarantool.Connect("127.0.0.1:3301", opts)
+
+cfg := tarantool.TtlQueueCfg{
+    tarantool.QueueCfg{
+        Temporary: true,
+        IfNotExist: true,
+        Kind: tarantool.FIFO_TTL_QUEUE,
+    },
+    tarantool.QueueOpts{
+        Ttl: 10 * time.Second,
+        Ttr: 5 * time.Second,
+        Delay: 3 * time.Second,
+        Pri: 1,
+    },
+}
+
+    //If you want simple fifo queue use only tarantool.QueueCfg{...}
+
+queue, err := conn.NewQueue("test_queue", cfg)
+task, err := queue.Put("test_data")
+fmt.Println("Task id is ", task.GetId())
+
+task, err = queue.Take() //blocking operation
+fmt.Println("Data is ", task.GetData())
+task.Ack()
+
+task, err = queue.Put([]int{1, 2, 3})
+task.Bury()
+
+task, err = queue.TakeWithTimeout(2 * time.Second)
+if task == nil {
+    fmt.Println("Task is nil")
+}
+
+q.Drop()
+```
+Features of the implementation:
+
+- If you use connection timeout and call `TakeWithTimeout` with parameter greater than the connection timeout then parameter reduced to it
+- If you use connection timeout and call `Take` then we return a error if we can not take task from queue in a time equal to the connection timeout
