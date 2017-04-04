@@ -313,10 +313,12 @@ func (conn *Connection) EvalAsync(expr string, args interface{}) *Future {
 	})
 }
 
+// NewQueue creates a new queue with config and return Queue.
 func (conn *Connection) NewQueue(name string, cfg queueCfg) (Queue, error) {
 	return newQueue(conn, name, cfg)
 }
 
+// GetQueue returns an existing queue by name.
 func (conn *Connection) GetQueue(name string) (Queue, error) {
 	return getQueue(conn, name)
 }

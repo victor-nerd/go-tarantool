@@ -24,21 +24,21 @@ type queue struct {
 }
 
 type queueCfg interface {
-	String() string
-	Type() string
+	toString() string
+	getType() string
 }
 
 type QueueCfg struct {
-	Temporary   bool
-	IfNotExists bool
+	Temporary   bool // if true, the contents do not persist on disk
+	IfNotExists bool // if true, no error will be returned if the tube already exists
 	Kind        queueType
 }
 
-func (cfg QueueCfg) String() string {
+func (cfg QueueCfg) toString() string {
 	return fmt.Sprintf("{ temporary = %v, if_not_exists = %v }", cfg.Temporary, cfg.IfNotExists)
 }
 
-func (cfg QueueCfg) Type() string {
+func (cfg QueueCfg) getType() string {
 	return string(cfg.Kind)
 }
 
@@ -48,13 +48,13 @@ type TtlQueueCfg struct {
 }
 
 type QueueOpts struct {
-	Pri   int
-	Ttl   time.Duration
-	Ttr   time.Duration
-	Delay time.Duration
+	Pri   int           // task priorities
+	Ttl   time.Duration // task time to live
+	Ttr   time.Duration // task time to execute
+	Delay time.Duration // delayed execution
 }
 
-func (cfg TtlQueueCfg) String() string {
+func (cfg TtlQueueCfg) toString() string {
 	params := []string{fmt.Sprintf("temporary = %v, if_not_exists = %v", cfg.Temporary, cfg.IfNotExists)}
 
 	if cfg.Ttl.Seconds() != 0 {
@@ -72,7 +72,7 @@ func (cfg TtlQueueCfg) String() string {
 	return "{" + strings.Join(params, ",") + "}"
 }
 
-func (cfg TtlQueueCfg) Type() string {
+func (cfg TtlQueueCfg) getType() string {
 	kind := string(cfg.Kind)
 	if kind == "" {
 		kind = string(FIFO_QUEUE)
@@ -105,7 +105,7 @@ func (opts QueueOpts) toMap() map[string]interface{} {
 
 func newQueue(conn *Connection, name string, cfg queueCfg) (Queue, error) {
 	var q queue
-	cmd := fmt.Sprintf("queue.create_tube('%s', '%s', %s)", name, cfg.Type(), cfg.String())
+	cmd := fmt.Sprintf("queue.create_tube('%s', '%s', %s)", name, cfg.getType(), cfg.toString())
 	_, err := conn.Eval(cmd, []interface{}{})
 	if err == nil {
 		q = queue{
@@ -140,10 +140,12 @@ func getQueue(conn *Connection, name string) (Queue, error) {
 	return q, err
 }
 
+// Put data to queue. Returns task.
 func (q queue) Put(data interface{}) (*Task, error) {
 	return q.put(data)
 }
 
+// Put data with options (ttl/ttr/pri/delay) to queue. Returns task.
 func (q queue) PutWithConfig(data interface{}, cfg QueueOpts) (*Task, error) {
 	return q.put(data, cfg.toMap())
 }
@@ -162,6 +164,7 @@ func (q queue) put(p ...interface{}) (*Task, error) {
 	return task, err
 }
 
+// The take request searches for a task in the queue.
 func (q queue) Take() (*Task, error) {
 	var params interface{}
 	if q.conn.opts.Timeout > 0 {
@@ -170,6 +173,7 @@ func (q queue) Take() (*Task, error) {
 	return q.take(params)
 }
 
+// The take request searches for a task in the queue. Waits until a task becomes ready or the timeout expires.
 func (q queue) TakeWithTimeout(timeout time.Duration) (*Task, error) {
 	if q.conn.opts.Timeout > 0 && timeout > q.conn.opts.Timeout {
 		timeout = q.conn.opts.Timeout
@@ -186,11 +190,13 @@ func (q queue) take(params interface{}) (*Task, error) {
 	return t, err
 }
 
+// Drop queue.
 func (q queue) Drop() error {
 	_, err := q.conn.Call(q.cmd["drop"], []interface{}{})
 	return err
 }
 
+// Look at a task without changing its state.
 func (q queue) Peek(taskId uint64) (*Task, error) {
 	resp, err := q.conn.Call(q.cmd["peek"], []interface{}{taskId})
 	if err != nil {
@@ -232,6 +238,7 @@ func (q queue) produce(cmd string, p ...interface{}) (string, error) {
 	return t.status, nil
 }
 
+// Reverse the effect of a bury request on one or more tasks.
 func (q queue) Kick(count uint64) (uint64, error) {
 	resp, err := q.conn.Call(q.cmd["kick"], []interface{}{count})
 	var id uint64
@@ -241,6 +248,7 @@ func (q queue) Kick(count uint64) (uint64, error) {
 	return id, err
 }
 
+// Return the number of tasks in a queue broken down by task_state, and the number of requests broken down by the type of request.
 func (q queue) Statistic() (interface{}, error) {
 	resp, err := q.conn.Call(q.cmd["statistics"], []interface{}{})
 	if err != nil {
