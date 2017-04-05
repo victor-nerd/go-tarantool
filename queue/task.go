@@ -1,4 +1,4 @@
-package tarantool
+package queue
 
 type Task struct {
 	id     uint64
@@ -49,15 +49,15 @@ func (t *Task) produce(f func(taskId uint64) (string, error)) error {
 
 // Put the task back in the queue, 'release' implies unsuccessful completion of a taken task.
 func (t *Task) Release() error {
-	return t.release(QueueOpts{})
+	return t.release(Opts{})
 }
 
 // Put the task back in the queue with config, 'release' implies unsuccessful completion of a taken task.
-func (t *Task) ReleaseWithConfig(cfg QueueOpts) error {
+func (t *Task) ReleaseWithConfig(cfg Opts) error {
 	return t.release(cfg)
 }
 
-func (t *Task) release(cfg QueueOpts) error {
+func (t *Task) release(cfg Opts) error {
 	newStatus, err := t.q._release(t.id, cfg)
 	if err != nil {
 		return err

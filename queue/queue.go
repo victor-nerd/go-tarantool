@@ -1,20 +1,26 @@
-package tarantool
+package queue
 
 import (
 	"fmt"
+	"github.com/tarantool/go-tarantool"
 	"strings"
 	"time"
 )
 
 type Queue interface {
 	Put(data interface{}) (*Task, error)
-	PutWithConfig(data interface{}, cfg QueueOpts) (*Task, error)
+	PutWithOpts(data interface{}, cfg Opts) (*Task, error)
 	Take() (*Task, error)
-	TakeWithTimeout(timeout time.Duration) (*Task, error)
+	TakeTimeout(timeout time.Duration) (*Task, error)
 	Drop() error
 	Peek(taskId uint64) (*Task, error)
 	Kick(taskId uint64) (uint64, error)
 	Statistic() (interface{}, error)
+}
+
+type Connection struct {
+	c    *tarantool.Connection
+	opts tarantool.Opts
 }
 
 type queue struct {
@@ -23,38 +29,14 @@ type queue struct {
 	cmd  map[string]string
 }
 
-type queueCfg interface {
-	toString() string
-	getType() string
-}
-
-type QueueCfg struct {
+type Cfg struct {
 	Temporary   bool // if true, the contents do not persist on disk
 	IfNotExists bool // if true, no error will be returned if the tube already exists
 	Kind        queueType
+	Opts
 }
 
-func (cfg QueueCfg) toString() string {
-	return fmt.Sprintf("{ temporary = %v, if_not_exists = %v }", cfg.Temporary, cfg.IfNotExists)
-}
-
-func (cfg QueueCfg) getType() string {
-	return string(cfg.Kind)
-}
-
-type TtlQueueCfg struct {
-	QueueCfg
-	QueueOpts
-}
-
-type QueueOpts struct {
-	Pri   int           // task priorities
-	Ttl   time.Duration // task time to live
-	Ttr   time.Duration // task time to execute
-	Delay time.Duration // delayed execution
-}
-
-func (cfg TtlQueueCfg) toString() string {
+func (cfg Cfg) toString() string {
 	params := []string{fmt.Sprintf("temporary = %v, if_not_exists = %v", cfg.Temporary, cfg.IfNotExists)}
 
 	if cfg.Ttl.Seconds() != 0 {
@@ -72,16 +54,23 @@ func (cfg TtlQueueCfg) toString() string {
 	return "{" + strings.Join(params, ",") + "}"
 }
 
-func (cfg TtlQueueCfg) getType() string {
+func (cfg Cfg) getType() string {
 	kind := string(cfg.Kind)
 	if kind == "" {
-		kind = string(FIFO_QUEUE)
+		kind = string(FIFO)
 	}
 
 	return kind
 }
 
-func (opts QueueOpts) toMap() map[string]interface{} {
+type Opts struct {
+	Pri   int           // task priorities
+	Ttl   time.Duration // task time to live
+	Ttr   time.Duration // task time to execute
+	Delay time.Duration // delayed execution
+}
+
+func (opts Opts) toMap() map[string]interface{} {
 	ret := make(map[string]interface{})
 
 	if opts.Ttl.Seconds() != 0 {
@@ -103,10 +92,21 @@ func (opts QueueOpts) toMap() map[string]interface{} {
 	return ret
 }
 
-func newQueue(conn *Connection, name string, cfg queueCfg) (Queue, error) {
+// Connect creates and configures new Connection
+func Connect(addr string, opts tarantool.Opts) (*Connection, error) {
+	conn, err := tarantool.Connect(addr, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Connection{conn, opts}, nil
+}
+
+// New creates a new queue with config and return Queue.
+func (conn *Connection) NewQueue(name string, cfg Cfg) (Queue, error) {
 	var q queue
 	cmd := fmt.Sprintf("queue.create_tube('%s', '%s', %s)", name, cfg.getType(), cfg.toString())
-	_, err := conn.Eval(cmd, []interface{}{})
+	_, err := conn.c.Eval(cmd, []interface{}{})
 	if err == nil {
 		q = queue{
 			name,
@@ -117,10 +117,11 @@ func newQueue(conn *Connection, name string, cfg queueCfg) (Queue, error) {
 	return q, err
 }
 
-func getQueue(conn *Connection, name string) (Queue, error) {
+// GetQueue returns an existing queue by name.
+func (conn *Connection) GetQueue(name string) (Queue, error) {
 	var q queue
 	cmd := fmt.Sprintf("return queue.tube.%s ~= null", name)
-	resp, err := conn.Eval(cmd, []interface{}{})
+	resp, err := conn.c.Eval(cmd, []interface{}{})
 	if err != nil {
 		return q, err
 	}
@@ -140,13 +141,18 @@ func getQueue(conn *Connection, name string) (Queue, error) {
 	return q, err
 }
 
+// Close closes Connection.
+func (conn *Connection) Close() error {
+	return conn.c.Close()
+}
+
 // Put data to queue. Returns task.
 func (q queue) Put(data interface{}) (*Task, error) {
 	return q.put(data)
 }
 
 // Put data with options (ttl/ttr/pri/delay) to queue. Returns task.
-func (q queue) PutWithConfig(data interface{}, cfg QueueOpts) (*Task, error) {
+func (q queue) PutWithOpts(data interface{}, cfg Opts) (*Task, error) {
 	return q.put(data, cfg.toMap())
 }
 
@@ -156,7 +162,7 @@ func (q queue) put(p ...interface{}) (*Task, error) {
 		task   *Task
 	)
 	params = append(params, p...)
-	resp, err := q.conn.Call(q.cmd["put"], params)
+	resp, err := q.conn.c.Call(q.cmd["put"], params)
 	if err == nil {
 		task, err = toTask(resp.Data, &q)
 	}
@@ -174,7 +180,7 @@ func (q queue) Take() (*Task, error) {
 }
 
 // The take request searches for a task in the queue. Waits until a task becomes ready or the timeout expires.
-func (q queue) TakeWithTimeout(timeout time.Duration) (*Task, error) {
+func (q queue) TakeTimeout(timeout time.Duration) (*Task, error) {
 	if q.conn.opts.Timeout > 0 && timeout > q.conn.opts.Timeout {
 		timeout = q.conn.opts.Timeout
 	}
@@ -183,7 +189,7 @@ func (q queue) TakeWithTimeout(timeout time.Duration) (*Task, error) {
 
 func (q queue) take(params interface{}) (*Task, error) {
 	var t *Task
-	resp, err := q.conn.Call(q.cmd["take"], []interface{}{params})
+	resp, err := q.conn.c.Call(q.cmd["take"], []interface{}{params})
 	if err == nil {
 		t, err = toTask(resp.Data, &q)
 	}
@@ -192,13 +198,13 @@ func (q queue) take(params interface{}) (*Task, error) {
 
 // Drop queue.
 func (q queue) Drop() error {
-	_, err := q.conn.Call(q.cmd["drop"], []interface{}{})
+	_, err := q.conn.c.Call(q.cmd["drop"], []interface{}{})
 	return err
 }
 
 // Look at a task without changing its state.
 func (q queue) Peek(taskId uint64) (*Task, error) {
-	resp, err := q.conn.Call(q.cmd["peek"], []interface{}{taskId})
+	resp, err := q.conn.c.Call(q.cmd["peek"], []interface{}{taskId})
 	if err != nil {
 		return nil, err
 	}
@@ -220,13 +226,13 @@ func (q queue) _bury(taskId uint64) (string, error) {
 	return q.produce("bury", taskId)
 }
 
-func (q queue) _release(taskId uint64, cfg QueueOpts) (string, error) {
+func (q queue) _release(taskId uint64, cfg Opts) (string, error) {
 	return q.produce("release", taskId, cfg.toMap())
 }
 func (q queue) produce(cmd string, p ...interface{}) (string, error) {
 	var params []interface{}
 	params = append(params, p...)
-	resp, err := q.conn.Call(q.cmd[cmd], params)
+	resp, err := q.conn.c.Call(q.cmd[cmd], params)
 	if err != nil {
 		return "", err
 	}
@@ -240,7 +246,7 @@ func (q queue) produce(cmd string, p ...interface{}) (string, error) {
 
 // Reverse the effect of a bury request on one or more tasks.
 func (q queue) Kick(count uint64) (uint64, error) {
-	resp, err := q.conn.Call(q.cmd["kick"], []interface{}{count})
+	resp, err := q.conn.c.Call(q.cmd["kick"], []interface{}{count})
 	var id uint64
 	if err == nil {
 		id = resp.Data[0].([]interface{})[0].(uint64)
@@ -250,7 +256,7 @@ func (q queue) Kick(count uint64) (uint64, error) {
 
 // Return the number of tasks in a queue broken down by task_state, and the number of requests broken down by the type of request.
 func (q queue) Statistic() (interface{}, error) {
-	resp, err := q.conn.Call(q.cmd["statistics"], []interface{}{})
+	resp, err := q.conn.c.Call(q.cmd["statistics"], []interface{}{})
 	if err != nil {
 		return nil, err
 	}
