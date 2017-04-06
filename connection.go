@@ -794,3 +794,8 @@ func (conn *Connection) read(r io.Reader) (response []byte, err error) {
 func (conn *Connection) nextRequestId() (requestId uint32) {
 	return atomic.AddUint32(&conn.requestId, 1)
 }
+
+// ConfiguredTimeout returns timeout from connection config
+func (conn *Connection) ConfiguredTimeout() time.Duration {
+	return conn.opts.Timeout
+}

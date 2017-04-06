@@ -503,26 +503,25 @@ func decodeTuple(d *msgpack.Decoder, v reflect.Value) error {
 
 ## Working-with-queue
 ```go
+
+import "github.com/tarantool/go-tarantool/queue"
+
 opts := tarantool.Opts{...}
 conn, err := tarantool.Connect("127.0.0.1:3301", opts)
 
-cfg := tarantool.TtlQueueCfg{
-    tarantool.QueueCfg{
+cfg := queue.Cfg{
         Temporary: true,
         IfNotExist: true,
         Kind: tarantool.FIFO_TTL_QUEUE,
-    },
-    tarantool.QueueOpts{
-        Ttl: 10 * time.Second,
-        Ttr: 5 * time.Second,
-        Delay: 3 * time.Second,
-        Pri: 1,
-    },
+        Opts: queue.Opts{
+                Ttl: 10 * time.Second,
+                Ttr: 5 * time.Second,
+                Delay: 3 * time.Second,
+                Pri: 1,
+        },
 }
 
-    //If you want simple fifo queue use only tarantool.QueueCfg{...}
-
-queue, err := conn.NewQueue("test_queue", cfg)
+queue, err := queue.NewQueue(conn, "test_queue", cfg)
 task, err := queue.Put("test_data")
 fmt.Println("Task id is ", task.GetId())
 

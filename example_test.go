@@ -232,14 +232,14 @@ func ExampleConnection_Queue() {
 		},
 	}
 
-	conn, err := queue.Connect(server, opts)
+	conn, err := tarantool.Connect(server, opts)
 	if err != nil {
 		fmt.Printf("error in prepare is %v", err)
 		return
 	}
 	defer conn.Close()
 
-	q, err := conn.NewQueue("test_queue", cfg)
+	q, err := queue.NewQueue(conn, "test_queue", cfg)
 	if err != nil {
 		fmt.Printf("error in queue is %v", err)
 		return
