@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/tarantool/go-tarantool"
 	"time"
-	"github.com/tarantool/go-tarantool/queue"
 )
 
 type Tuple struct {
@@ -221,63 +220,4 @@ func Example() {
 	// Fut 1 Data [[13 4]]
 	// Fut 2 Error <nil>
 	// Fut 2 Data [[15 val 15 bla]]
-}
-
-func ExampleConnection_Queue() {
-	cfg := queue.Cfg{
-		Temporary: false,
-		Kind:      queue.FIFO,
-		Opts:      queue.Opts{
-			Ttl: 10 * time.Second,
-		},
-	}
-
-	conn, err := tarantool.Connect(server, opts)
-	if err != nil {
-		fmt.Printf("error in prepare is %v", err)
-		return
-	}
-	defer conn.Close()
-
-	q, err := queue.NewQueue(conn, "test_queue", cfg)
-	if err != nil {
-		fmt.Printf("error in queue is %v", err)
-		return
-	}
-
-	defer q.Drop()
-
-	testData_1 := "test_data_1"
-	_, err = q.Put(testData_1)
-	if err != nil {
-		fmt.Printf("error in put is %v", err)
-		return
-	}
-
-	testData_2 := "test_data_2"
-	task_2, err := q.PutWithOpts(testData_2, queue.Opts{Ttl: 2 * time.Second})
-	if err != nil {
-		fmt.Printf("error in put with config is %v", err)
-		return
-	}
-
-	task, err := q.Take()
-	if err != nil {
-		fmt.Printf("error in take with is %v", err)
-		return
-	}
-	task.Ack()
-	fmt.Println("data_1: ", task.GetData())
-
-	err = task_2.Bury()
-	if err != nil {
-		fmt.Printf("error in bury with is %v", err)
-		return
-	}
-
-	task, err = q.TakeTimeout(2 * time.Second)
-	if task != nil {
-		fmt.Printf("Task should be nil, but %s", task)
-		return
-	}
 }

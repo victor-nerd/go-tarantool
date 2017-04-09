@@ -1,27 +1,49 @@
 package queue
 
 import (
-	"fmt"
 	"github.com/tarantool/go-tarantool"
-	"strings"
 	"time"
 )
 
+// Queue is a handle to tarantool queue's tube
 type Queue interface {
-	Put(data interface{}) (*Task, error)
-	PutWithOpts(data interface{}, cfg Opts) (*Task, error)
-	Take() (*Task, error)
-	TakeTimeout(timeout time.Duration) (*Task, error)
+	// Exists checks tube for existence
+	// Note: it uses Eval, so user needs 'execute universe' privilege
+	Exists() (bool, error)
+	// Create creates new tube with configuration
+	// Note: it uses Eval, so user needs 'execute universe' privilege
+	// Note: you'd better not use this function in your application, cause it is
+	// administrative task to create or delete queue.
+	Create(cfg Cfg) (error)
+	// Drop destroys tube.
+	// Note: you'd better not use this function in your application, cause it is
+	// administrative task to create or delete queue.
 	Drop() error
+	// Put creates new task in a tube
+	Put(data interface{}) (*Task, error)
+	// PutWithOpts creates new task with options different from tube's defaults
+	PutWithOpts(data interface{}, cfg Opts) (*Task, error)
+	// Take takes 'ready' task from a tube and marks it as 'in progress'
+	// Note: if connection has a request Timeout, then 0.9 * connection.Timeout is
+	// used as a timeout.
+	Take() (*Task, error)
+	// TakeWithTimout takes 'ready' task from a tube and marks it as "in progress",
+	// or it is timeouted after "timeout" period.
+	// Note: if connection has a request Timeout, and conn.Timeout * 0.9 < timeout
+	// then timeout = conn.Timeout*0.9
+	TakeTimeout(timeout time.Duration) (*Task, error)
+	// Peek returns task by its id.
 	Peek(taskId uint64) (*Task, error)
-	Kick(taskId uint64) (uint64, error)
+	// Kick reverts effect of Task.Bury() for `count` tasks.
+	Kick(count uint64) (uint64, error)
+	// Statistic returns some statistic about queue.
 	Statistic() (interface{}, error)
 }
 
 type queue struct {
 	name string
 	conn *tarantool.Connection
-	cmds *cmd
+	cmds cmd
 }
 
 type cmd struct {
@@ -44,22 +66,11 @@ type Cfg struct {
 	Opts
 }
 
-func (cfg Cfg) toString() string {
-	params := []string{fmt.Sprintf("temporary = %v, if_not_exists = %v", cfg.Temporary, cfg.IfNotExists)}
-
-	if cfg.Ttl.Seconds() != 0 {
-		params = append(params, fmt.Sprintf("ttl = %f", cfg.Ttl.Seconds()))
-	}
-
-	if cfg.Ttr.Seconds() != 0 {
-		params = append(params, fmt.Sprintf("ttr = %f", cfg.Ttr.Seconds()))
-	}
-
-	if cfg.Delay.Seconds() != 0 {
-		params = append(params, fmt.Sprintf("delay = %f", cfg.Delay.Seconds()))
-	}
-
-	return "{" + strings.Join(params, ",") + "}"
+func (cfg Cfg) toMap() map[string]interface{} {
+	res := cfg.Opts.toMap()
+	res["temporary"] = cfg.Temporary
+	res["if_not_exists"] = cfg.IfNotExists
+	return res
 }
 
 func (cfg Cfg) getType() string {
@@ -100,43 +111,33 @@ func (opts Opts) toMap() map[string]interface{} {
 	return ret
 }
 
-// New creates a new queue with config and return Queue.
-func NewQueue(conn *tarantool.Connection, name string, cfg Cfg) (Queue, error) {
-	var q *queue
-	cmd := fmt.Sprintf("queue.create_tube('%s', '%s', %s)", name, cfg.getType(), cfg.toString())
-	_, err := conn.Eval(cmd, []interface{}{})
-	if err == nil {
-		q = &queue{
-			name,
-			conn,
-			makeCmd(name),
-		}
+// New creates a queue handle
+func New(conn *tarantool.Connection, name string) Queue {
+	q := &queue{
+		name: name,
+		conn: conn,
 	}
-	return q, err
+	makeCmd(q)
+	return q
 }
 
-// GetQueue returns an existing queue by name.
-func GetQueue(conn *tarantool.Connection, name string) (Queue, error) {
-	var q *queue
-	cmd := fmt.Sprintf("return queue.tube.%s ~= null", name)
-	resp, err := conn.Eval(cmd, []interface{}{})
+// Create creates a new queue with config
+func (q *queue) Create(cfg Cfg) error {
+	cmd := "local name, type, cfg = ... ; queue.create_tube(name, type, cfg)"
+	_, err := q.conn.Eval(cmd, []interface{}{q.name, cfg.getType(), cfg.toMap()})
+	return err
+}
+
+// Exists checks existance of a tube
+func (q *queue) Exists() (bool, error) {
+	cmd := "local name = ... ; return queue.tube[name] ~= null"
+	resp, err := q.conn.Eval(cmd, []string{q.name})
 	if err != nil {
-		return q, err
+		return false, err
 	}
 
 	exist := len(resp.Data) != 0 && resp.Data[0].(bool)
-
-	if exist {
-		q = &queue{
-			name,
-			conn,
-			makeCmd(name),
-		}
-	} else {
-		err = fmt.Errorf("Tube %s does not exist", name)
-	}
-
-	return q, err
+	return exist, nil
 }
 
 // Put data to queue. Returns task.
@@ -259,17 +260,17 @@ func (q *queue) Statistic() (interface{}, error) {
 	return nil, nil
 }
 
-func makeCmd(name string) *cmd {
-	return &cmd{
-		put:        "queue.tube." + name + ":put",
-		take:       "queue.tube." + name + ":take",
-		drop:       "queue.tube." + name + ":drop",
-		peek:       "queue.tube." + name + ":peek",
-		ack:        "queue.tube." + name + ":ack",
-		delete:     "queue.tube." + name + ":delete",
-		bury:       "queue.tube." + name + ":bury",
-		kick:       "queue.tube." + name + ":kick",
-		release:    "queue.tube." + name + ":release",
+func makeCmd(q *queue) {
+	q.cmds = cmd{
+		put:        "queue.tube." + q.name + ":put",
+		take:       "queue.tube." + q.name + ":take",
+		drop:       "queue.tube." + q.name + ":drop",
+		peek:       "queue.tube." + q.name + ":peek",
+		ack:        "queue.tube." + q.name + ":ack",
+		delete:     "queue.tube." + q.name + ":delete",
+		bury:       "queue.tube." + q.name + ":bury",
+		kick:       "queue.tube." + q.name + ":kick",
+		release:    "queue.tube." + q.name + ":release",
 		statistics: "queue.statistics",
 	}
 }

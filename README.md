@@ -521,18 +521,19 @@ cfg := queue.Cfg{
         },
 }
 
-queue, err := queue.NewQueue(conn, "test_queue", cfg)
-task, err := queue.Put("test_data")
+que := queue.New(conn, "test_queue")
+err = que.Create(cfg)
+task, err := que.Put("test_data")
 fmt.Println("Task id is ", task.GetId())
 
-task, err = queue.Take() //blocking operation
+task, err = que.Take() //blocking operation
 fmt.Println("Data is ", task.GetData())
 task.Ack()
 
-task, err = queue.Put([]int{1, 2, 3})
+task, err = que.Put([]int{1, 2, 3})
 task.Bury()
 
-task, err = queue.TakeWithTimeout(2 * time.Second)
+task, err = que.TakeTimeout(2 * time.Second)
 if task == nil {
     fmt.Println("Task is nil")
 }

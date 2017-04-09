@@ -1,5 +1,6 @@
 package queue
 
+// Task represents a task from tarantool queue's tube
 type Task struct {
 	id     uint64
 	status string
@@ -7,87 +8,79 @@ type Task struct {
 	q      *queue
 }
 
-// Return a task id
-func (t *Task) GetId() uint64 {
+// Id is a getter for task id
+func (t *Task) Id() uint64 {
 	return t.id
 }
 
-// Return a task data
-func (t *Task) GetData() interface{} {
+// Data is a getter for task data
+func (t *Task) Data() interface{} {
 	return t.data
 }
 
-// Return a task status
-func (t *Task) GetStatus() string {
+// Status is a getter for task status
+func (t *Task) Status() string {
 	return t.status
 }
 
-// Signal that the task has been completed
+// Ack signals about task completion
 func (t *Task) Ack() error {
-	return t.produce(t.q._ack)
+	return t.accept(t.q._ack(t.id))
 }
 
 // Delete task from queue
 func (t *Task) Delete() error {
-	return t.produce(t.q._delete)
+	return t.accept(t.q._delete(t.id))
 }
 
-// If it becomes clear that a task cannot be executed in the current circumstances, you can "bury" the task -- that is, disable it until the circumstances change.
+// Bury signals that task task cannot be executed in the current circumstances,
+// task becomes "buried" - ie neither completed, nor ready, so it could not be
+// deleted or taken by other worker.
+// To revert "burying" call queue.Kick(numberOfBurried).
 func (t *Task) Bury() error {
-	return t.produce(t.q._bury)
+	return t.accept(t.q._bury(t.id))
 }
 
-func (t *Task) produce(f func(taskId uint64) (string, error)) error {
-	newStatus, err := f(t.id)
-	if err != nil {
-		return err
-	}
-
-	t.status = newStatus
-	return nil
-}
-
-// Put the task back in the queue, 'release' implies unsuccessful completion of a taken task.
+// Release returns task back in the queue without making it complete.
+// In outher words, this worker failed to complete the task, and
+// it, so other worker could try to do that again.
 func (t *Task) Release() error {
-	return t.release(Opts{})
+	return t.accept(t.q._release(t.id, Opts{}))
 }
 
-// Put the task back in the queue with config, 'release' implies unsuccessful completion of a taken task.
-func (t *Task) ReleaseWithConfig(cfg Opts) error {
-	return t.release(cfg)
+// ReleaseCfg returns task to a queue and changes its configuration.
+func (t *Task) ReleaseCfg(cfg Opts) error {
+	return t.accept(t.q._release(t.id, cfg))
 }
 
-func (t *Task) release(cfg Opts) error {
-	newStatus, err := t.q._release(t.id, cfg)
-	if err != nil {
-		return err
+func (t *Task) accept(newStatus string, err error) error {
+	if err == nil {
+		t.status = newStatus
 	}
-
-	t.status = newStatus
-	return nil
+	return err
 }
 
-// Return true if task status is ready
+// IsReady returns if task is ready
 func (t *Task) IsReady() bool {
 	return t.status == READY
 }
 
-// Return true if task status is taken
+// IsTaken returns if task is taken
 func (t *Task) IsTaken() bool {
 	return t.status == TAKEN
 }
 
-// Return true if task status is done
+// IsDone returns if task is done
 func (t *Task) IsDone() bool {
 	return t.status == DONE
 }
 
-// Return true if task status is bury
+// IsBurred returns if task is buried
 func (t *Task) IsBuried() bool {
 	return t.status == BURIED
 }
 
-// Return true if task status is delayed
+// IsDelayed returns if task is delayed
 func (t *Task) IsDelayed() bool {
 	return t.status == DELAYED
 }
