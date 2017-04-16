@@ -164,14 +164,14 @@ func (q *queue) put(params ...interface{}) (*Task, error) {
 func (q *queue) Take() (*Task, error) {
 	var params interface{}
 	if q.conn.ConfiguredTimeout() > 0 {
-		params = q.conn.ConfiguredTimeout().Seconds()
+		params = (q.conn.ConfiguredTimeout() * 9 / 10).Seconds()
 	}
 	return q.take(params)
 }
 
 // The take request searches for a task in the queue. Waits until a task becomes ready or the timeout expires.
 func (q *queue) TakeTimeout(timeout time.Duration) (*Task, error) {
-	t := q.conn.ConfiguredTimeout()
+	t := q.conn.ConfiguredTimeout() * 9 / 10
 	if t > 0 && timeout > t {
 		timeout = t
 	}
