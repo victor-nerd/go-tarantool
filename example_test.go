@@ -10,9 +10,9 @@ type Tuple struct {
 	/* instruct msgpack to pack this struct as array,
 	 * so no custom packer is needed */
 	_msgpack struct{} `msgpack:",asArray"`
-	Id   uint
-	Msg  string
-	Name string
+	Id       uint
+	Msg      string
+	Name     string
 }
 
 func example_connect() (*tarantool.Connection, error) {
@@ -118,7 +118,7 @@ func Example() {
 	fmt.Println("Insert Data", resp.Data)
 
 	// insert new tuple { 11, 1 }
-	resp, err = client.Insert("test", &Tuple{Id:10, Msg:"test", Name:"one"})
+	resp, err = client.Insert("test", &Tuple{Id: 10, Msg: "test", Name: "one"})
 	fmt.Println("Insert Error", err)
 	fmt.Println("Insert Code", resp.Code)
 	fmt.Println("Insert Data", resp.Data)
@@ -167,8 +167,8 @@ func Example() {
 	fmt.Println("Eval Code", resp.Code)
 	fmt.Println("Eval Data", resp.Data)
 
-	resp, err = client.Replace("test", &Tuple{Id:11, Msg:"test", Name:"eleven"})
-	resp, err = client.Replace("test", &Tuple{Id:12, Msg:"test", Name:"twelve"})
+	resp, err = client.Replace("test", &Tuple{Id: 11, Msg: "test", Name: "eleven"})
+	resp, err = client.Replace("test", &Tuple{Id: 12, Msg: "test", Name: "twelve"})
 
 	var futs [3]*tarantool.Future
 	futs[0] = client.SelectAsync("test", "primary", 0, 2, tarantool.IterLe, tarantool.UintKey{12})
