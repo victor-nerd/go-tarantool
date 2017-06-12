@@ -223,7 +223,12 @@ func Connect(addr string, opts Opts) (conn *Connection, err error) {
 	}
 
 	if err = conn.createConnection(false); err != nil {
+		ter, ok := err.(Error)
 		if conn.opts.Reconnect <= 0 {
+			return nil, err
+		} else if ok && (ter.Code == ErrNoSuchUser ||
+			ter.Code == ErrPasswordMismatch) {
+			/* reported auth errors immediatly */
 			return nil, err
 		} else {
 			// without SkipSchema it is useless
