@@ -433,7 +433,7 @@ func TestClient(t *testing.T) {
 		}
 	}
 	//resp, err = conn.Insert(spaceNo, []interface{}{uint(1), "hello", "world"})
-	resp, err = conn.Insert(spaceNo, &Tuple{Id:1, Msg:"hello", Name:"world"})
+	resp, err = conn.Insert(spaceNo, &Tuple{Id: 1, Msg: "hello", Name: "world"})
 	if tntErr, ok := err.(Error); !ok || tntErr.Code != ErrTupleFound {
 		t.Errorf("Expected ErrTupleFound but got: %v", err)
 	}
@@ -980,7 +980,7 @@ func TestComplexStructs(t *testing.T) {
 	}
 	defer conn.Close()
 
-	tuple := Tuple2{Cid:777, Orig:"orig", Members:[]Member{{"lol", "", 1}, {"wut", "", 3}}}
+	tuple := Tuple2{Cid: 777, Orig: "orig", Members: []Member{{"lol", "", 1}, {"wut", "", 3}}}
 	_, err = conn.Replace(spaceNo, &tuple)
 	if err != nil {
 		t.Errorf("Failed to insert: %s", err.Error())
