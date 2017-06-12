@@ -311,7 +311,7 @@ func (conn *Connection) dial() (err error) {
 		timeout = 5 * time.Second
 	}
 	// Unix socket connection
-	if address[0] == '.' || address [0] == '/' {
+	if address[0] == '.' || address[0] == '/' {
 		network = "unix"
 	} else if address[0:7] == "unix://" {
 		network = "unix"
