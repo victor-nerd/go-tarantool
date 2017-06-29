@@ -380,13 +380,6 @@ func (fut *Future) send(conn *Connection, body func(*msgpack.Encoder) error) *Fu
 		return fut
 	}
 	conn.putFuture(fut, body)
-	if fut.err != nil {
-		if f := conn.fetchFuture(fut.requestId); f == fut {
-			fut.markReady(conn)
-		}
-		return fut
-	}
-
 	return fut
 }
 

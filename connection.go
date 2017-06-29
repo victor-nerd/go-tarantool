@@ -670,8 +670,26 @@ func (conn *Connection) putFuture(fut *Future, body func(*msgpack.Encoder) error
 	blen := len(shard.buf)
 	if err := fut.pack(&shard.buf, shard.enc, body); err != nil {
 		shard.buf = shard.buf[:blen]
-		fut.err = err
 		shard.bufmut.Unlock()
+		if f := conn.fetchFuture(fut.requestId); f == fut {
+			fut.markReady(conn)
+			fut.err = err
+		} else if f != nil {
+			/* in theory, it is possible. In practice, you have
+			 * to have race condition that lasts hours */
+			panic("Unknown future")
+		} else {
+			fut.wait()
+			if fut.err == nil {
+				panic("Future removed from queue without error")
+			}
+			if _, ok := fut.err.(ClientError); ok {
+				// packing error is more important than connection
+				// error, because it is indication of programmer's
+				// mistake.
+				fut.err = err
+			}
+		}
 		return
 	}
 	shard.bufmut.Unlock()
