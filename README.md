@@ -27,6 +27,7 @@ faster than other packages according to public benchmarks.
 * [Custom (un)packing and typed selects and function calls](#custom-unpacking-and-typed-selects-and-function-calls)
 * [Options](#options)
 * [Working with queue](#working-with-queue)
+* [Alternative connectors](#alternative-connectors)
 
 ## Installation
 
@@ -501,7 +502,7 @@ func decodeTuple(d *msgpack.Decoder, v reflect.Value) error {
 * `User` - user name to log into Tarantool.
 * `Pass` - user password to log into Tarantool.
 
-## Working-with-queue
+## Working with queue
 ```go
 
 import "github.com/tarantool/go-tarantool/queue"
@@ -544,3 +545,8 @@ Features of the implementation:
 
 - If you use connection timeout and call `TakeWithTimeout` with parameter greater than the connection timeout then parameter reduced to it
 - If you use connection timeout and call `Take` then we return a error if we can not take task from queue in a time equal to the connection timeout
+
+## Alternative connectors
+
+- https://github.com/viciious/go-tarantool
+  Has tools to emulate tarantool, and to being replica for tarantool.
