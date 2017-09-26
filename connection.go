@@ -23,6 +23,7 @@ const (
 )
 
 type ConnEventKind int
+type ConnLogKind int
 
 const (
 	// Connect signals that connection is established or reestablished
@@ -33,6 +34,15 @@ const (
 	ReconnectFailed
 	// Either reconnect attempts exhausted, or explicit Close is called
 	Closed
+
+	// LogReconnectFailed is logged when reconnect attempt failed
+	LogReconnectFailed ConnLogKind = iota + 1
+	// LogLastReconnectFailed is logged when last reconnect attempt failed,
+	// connection will be closed after that.
+	LogLastReconnectFailed
+	// LogUnexpectedResultId is logged when response with unknown id were received.
+	// Most probably it is due to request timeout.
+	LogUnexpectedResultId
 )
 
 // ConnEvent is sent throw Notify channel specified in Opts
@@ -43,6 +53,28 @@ type ConnEvent struct {
 }
 
 var epoch = time.Now()
+
+// Logger is logger type expected to be passed in options.
+type Logger interface {
+	Report(event ConnLogKind, conn *Connection, v ...interface{})
+}
+
+type defaultLogger struct{}
+
+func (d defaultLogger) Report(event ConnLogKind, conn *Connection, v ...interface{}) {
+	switch event {
+	case LogReconnectFailed:
+		reconnects := v[0].(uint)
+		err := v[1].(error)
+		log.Printf("tarantool: reconnect (%d/%d) to %s failed: %s\n", reconnects, conn.opts.MaxReconnects, conn.addr, err.Error())
+	case LogLastReconnectFailed:
+		err := v[0].(error)
+		log.Printf("tarantool: last reconnect to %s failed: %s, giving it up.\n", conn.addr, err.Error())
+	case LogUnexpectedResultId:
+		resp := v[0].(Response)
+		log.Printf("tarantool: connection %s got unexpected resultId (%d) in response", conn.addr, resp.RequestId)
+	}
+}
 
 // Connection is a handle to Tarantool.
 //
@@ -159,6 +191,8 @@ type Opts struct {
 	Notify chan<- ConnEvent
 	// Handle is user specified value, that could be retrivied with Handle() method
 	Handle interface{}
+	// Logger is user specified logger used for error messages
+	Logger Logger
 }
 
 // Connect creates and configures new Connection
@@ -220,6 +254,10 @@ func Connect(addr string, opts Opts) (conn *Connection, err error) {
 		if opts.RLimitAction != RLimitDrop && opts.RLimitAction != RLimitWait {
 			return nil, errors.New("RLimitAction should be specified to RLimitDone nor RLimitWait")
 		}
+	}
+
+	if conn.opts.Logger == nil {
+		conn.opts.Logger = defaultLogger{}
 	}
 
 	if err = conn.createConnection(false); err != nil {
@@ -430,12 +468,12 @@ func (conn *Connection) createConnection(reconnect bool) (err error) {
 			return
 		}
 		if conn.opts.MaxReconnects > 0 && reconnects > conn.opts.MaxReconnects {
-			log.Printf("tarantool: last reconnect to %s failed: %s, giving it up.\n", conn.addr, err.Error())
+			conn.opts.Logger.Report(LogLastReconnectFailed, conn, err)
 			err = ClientError{ErrConnectionClosed, "last reconnect failed"}
 			// mark connection as closed to avoid reopening by another goroutine
 			return
 		}
-		log.Printf("tarantool: reconnect (%d/%d) to %s failed: %s\n", reconnects, conn.opts.MaxReconnects, conn.addr, err.Error())
+		conn.opts.Logger.Report(LogReconnectFailed, conn, reconnects, err)
 		conn.notify(ReconnectFailed)
 		reconnects++
 		conn.mutex.Unlock()
@@ -594,7 +632,7 @@ func (conn *Connection) reader(r *bufio.Reader, c net.Conn) {
 			fut.resp = resp
 			fut.markReady(conn)
 		} else {
-			log.Printf("tarantool: unexpected requestId (%d) in response", uint(resp.RequestId))
+			conn.opts.Logger.Report(LogUnexpectedResultId, conn, resp)
 		}
 	}
 }
