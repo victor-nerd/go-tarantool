@@ -71,7 +71,7 @@ func (d defaultLogger) Report(event ConnLogKind, conn *Connection, v ...interfac
 		err := v[0].(error)
 		log.Printf("tarantool: last reconnect to %s failed: %s, giving it up.\n", conn.addr, err.Error())
 	case LogUnexpectedResultId:
-		resp := v[0].(Response)
+		resp := v[0].(*Response)
 		log.Printf("tarantool: connection %s got unexpected resultId (%d) in response", conn.addr, resp.RequestId)
 	default:
 		args := append([]interface{}{"tarantool: unexpecting event ", event, conn}, v...)
