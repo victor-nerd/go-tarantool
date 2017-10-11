@@ -152,10 +152,15 @@ func (conn *Connection) loadSchema() (err error) {
 			}
 		case []interface{}:
 			for _, f := range row[5].([]interface{}) {
-				f := f.([]interface{})
 				field := new(IndexField)
-				field.Id = uint32(f[0].(uint64))
-				field.Type = f[1].(string)
+				switch f := f.(type) {
+				case []interface{}:
+					field.Id = uint32(f[0].(uint64))
+					field.Type = f[1].(string)
+				case map[string]interface{}:
+					field.Id = uint32(f["field"].(uint64))
+					field.Type = f["type"].(string)
+				}
 				index.Fields = append(index.Fields, field)
 			}
 		default:
