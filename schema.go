@@ -141,9 +141,9 @@ func (conn *Connection) loadSchema() (err error) {
 		default:
 			panic("unexpected schema format (index flags)")
 		}
-		switch row[5].(type) {
+		switch fields := row[5].(type) {
 		case uint64:
-			cnt := int(row[5].(uint64))
+			cnt := int(fields)
 			for i := 0; i < cnt; i++ {
 				field := new(IndexField)
 				field.Id = uint32(row[6+i*2].(uint64))
@@ -151,13 +151,13 @@ func (conn *Connection) loadSchema() (err error) {
 				index.Fields = append(index.Fields, field)
 			}
 		case []interface{}:
-			for _, f := range row[5].([]interface{}) {
+			for _, f := range fields {
 				field := new(IndexField)
 				switch f := f.(type) {
 				case []interface{}:
 					field.Id = uint32(f[0].(uint64))
 					field.Type = f[1].(string)
-				case map[string]interface{}:
+				case map[interface{}]interface{}:
 					field.Id = uint32(f["field"].(uint64))
 					field.Type = f["type"].(string)
 				}

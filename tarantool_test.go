@@ -745,10 +745,10 @@ func TestSchema(t *testing.T) {
 	if space.Fields == nil {
 		t.Errorf("space.Fields is nill")
 	}
-	if len(space.FieldsById) != 3 {
+	if len(space.FieldsById) != 6 {
 		t.Errorf("space.FieldsById len is incorrect")
 	}
-	if len(space.Fields) != 2 {
+	if len(space.Fields) != 6 {
 		t.Errorf("space.Fields len is incorrect")
 	}
 
@@ -775,13 +775,13 @@ func TestSchema(t *testing.T) {
 	if field1.Name != "name1" {
 		t.Errorf("field 1 has incorrect Name")
 	}
-	if field1.Type != "" {
+	if field1.Type != "unsigned" {
 		t.Errorf("field 1 has incorrect Type")
 	}
-	if field2.Name != "" {
+	if field2.Name != "name2" {
 		t.Errorf("field 2 has incorrect Name")
 	}
-	if field2.Type != "type2" {
+	if field2.Type != "string" {
 		t.Errorf("field 2 has incorrect Type")
 	}
 
