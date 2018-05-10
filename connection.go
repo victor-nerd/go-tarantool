@@ -316,6 +316,11 @@ func (conn *Connection) Close() error {
 	return conn.closeConnection(err, true)
 }
 
+// Addr is configured address of Tarantool socket
+func (conn *Connection) Addr() string {
+	return conn.addr
+}
+
 // RemoteAddr is address of Tarantool socket
 func (conn *Connection) RemoteAddr() string {
 	conn.mutex.Lock()
