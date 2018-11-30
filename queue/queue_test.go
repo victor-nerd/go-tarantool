@@ -7,7 +7,7 @@ import (
 
 	. "github.com/tarantool/go-tarantool"
 	"github.com/tarantool/go-tarantool/queue"
-	msgpack "gopkg.in/vmihailenco/msgpack.v2"
+	"gopkg.in/vmihailenco/msgpack.v2"
 )
 
 var server = "127.0.0.1:3013"
@@ -195,6 +195,7 @@ func TestFifoQueue_Take(t *testing.T) {
 
 		if !task.IsTaken() {
 			t.Errorf("Task status after take is not taken. Status = %s", task.Status())
+
 		}
 
 		err = task.Ack()

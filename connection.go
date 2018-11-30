@@ -111,6 +111,7 @@ func (d defaultLogger) Report(event ConnLogKind, conn *Connection, v ...interfac
 // always returns array of array (array of tuples for space related methods).
 // For Eval* and Call17* tarantool always returns array, but does not forces
 // array of arrays.
+
 type Connection struct {
 	addr  string
 	c     net.Conn
@@ -131,6 +132,8 @@ type Connection struct {
 	dec     *msgpack.Decoder
 	lenbuf  [PacketLengthBytes]byte
 }
+
+var _ = Connector(&Connection{}) // check compatibility with connector interface
 
 type connShard struct {
 	rmut     sync.Mutex
@@ -224,7 +227,6 @@ type Opts struct {
 // - If opts.Reconnect is non-zero, then error will be returned only if authorization// fails. But if Tarantool is not reachable, then it will attempt to reconnect later
 // and will not end attempts on authorization failures.
 func Connect(addr string, opts Opts) (conn *Connection, err error) {
-
 	conn = &Connection{
 		addr:      addr,
 		requestId: 0,
@@ -305,6 +307,11 @@ func Connect(addr string, opts Opts) (conn *Connection, err error) {
 // ConnectedNow reports if connection is established at the moment.
 func (conn *Connection) ConnectedNow() bool {
 	return atomic.LoadUint32(&conn.state) == connConnected
+}
+
+// ClosedNow reports if connection is closed by user or after reconnect.
+func (conn *Connection) ClosedNow() bool {
+	return atomic.LoadUint32(&conn.state) == connClosed
 }
 
 // Close closes Connection.

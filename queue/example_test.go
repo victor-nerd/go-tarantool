@@ -3,8 +3,8 @@ package queue_test
 import (
 	"fmt"
 	"github.com/tarantool/go-tarantool"
-	"time"
 	"github.com/tarantool/go-tarantool/queue"
+	"time"
 )
 
 func ExampleConnection_Queue() {
