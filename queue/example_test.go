@@ -60,7 +60,7 @@ func ExampleConnection_Queue() {
 
 	task, err = q.TakeTimeout(2 * time.Second)
 	if task != nil {
-		fmt.Printf("Task should be nil, but %s", task)
+		fmt.Printf("Task should be nil, but %d", task.Id())
 		return
 	}
 }

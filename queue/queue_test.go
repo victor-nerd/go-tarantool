@@ -194,14 +194,14 @@ func TestFifoQueue_Take(t *testing.T) {
 		}
 
 		if !task.IsTaken() {
-			t.Errorf("Task status after take is not taken. Status = ", task.Status())
+			t.Errorf("Task status after take is not taken. Status = %s", task.Status())
 		}
 
 		err = task.Ack()
 		if err != nil {
 			t.Errorf("Failed ack %s", err.Error())
 		} else if !task.IsDone() {
-			t.Errorf("Task status after take is not done. Status = ", task.Status())
+			t.Errorf("Task status after take is not done. Status = %s", task.Status())
 		}
 	}
 }
@@ -300,14 +300,14 @@ func TestFifoQueue_TakeTyped(t *testing.T) {
 			t.Errorf("Task data after take not equal with example. %#v != %#v", task.Data(), putData)
 		}
 		if !task.IsTaken() {
-			t.Errorf("Task status after take is not taken. Status = ", task.Status())
+			t.Errorf("Task status after take is not taken. Status = %s", task.Status())
 		}
 
 		err = task.Ack()
 		if err != nil {
 			t.Errorf("Failed ack %s", err.Error())
 		} else if !task.IsDone() {
-			t.Errorf("Task status after take is not done. Status = ", task.Status())
+			t.Errorf("Task status after take is not done. Status = %s", task.Status())
 		}
 	}
 }
@@ -366,7 +366,7 @@ func TestFifoQueue_Peek(t *testing.T) {
 		}
 
 		if !task.IsReady() {
-			t.Errorf("Task status after peek is not ready. Status = ", task.Status())
+			t.Errorf("Task status after peek is not ready. Status = %s", task.Status())
 		}
 	}
 }
@@ -419,7 +419,7 @@ func TestFifoQueue_Bury_Kick(t *testing.T) {
 		t.Errorf("Failed bury task %s", err.Error())
 		return
 	} else if !task.IsBuried() {
-		t.Errorf("Task status after bury is not buried. Status = ", task.Status())
+		t.Errorf("Task status after bury is not buried. Status = %s", task.Status())
 	}
 
 	//Kick
@@ -444,14 +444,14 @@ func TestFifoQueue_Bury_Kick(t *testing.T) {
 		}
 
 		if !task.IsTaken() {
-			t.Errorf("Task status after take is not taken. Status = ", task.Status())
+			t.Errorf("Task status after take is not taken. Status = %s", task.Status())
 		}
 
 		err = task.Ack()
 		if err != nil {
 			t.Errorf("Failed ack %s", err.Error())
 		} else if !task.IsDone() {
-			t.Errorf("Task status after take is not done. Status = ", task.Status())
+			t.Errorf("Task status after take is not done. Status = %s", task.Status())
 		}
 	}
 }
@@ -510,7 +510,7 @@ func TestFifoQueue_Delete(t *testing.T) {
 		t.Errorf("Failed bury task %s", err.Error())
 		return
 	} else if !tasks[0].IsDone() {
-		t.Errorf("Task status after delete is not done. Status = ", tasks[0].Status())
+		t.Errorf("Task status after delete is not done. Status = %s", tasks[0].Status())
 	}
 
 	//Delete by task ID
@@ -519,7 +519,7 @@ func TestFifoQueue_Delete(t *testing.T) {
 		t.Errorf("Failed bury task %s", err.Error())
 		return
 	} else if !tasks[0].IsDone() {
-		t.Errorf("Task status after delete is not done. Status = ", tasks[0].Status())
+		t.Errorf("Task status after delete is not done. Status = %s", tasks[0].Status())
 	}
 
 	//Take
@@ -528,7 +528,7 @@ func TestFifoQueue_Delete(t *testing.T) {
 		if err != nil {
 			t.Errorf("Failed take from queue: %s", err.Error())
 		} else if tasks[i] != nil {
-			t.Errorf("Task is not nil after take. Task is %s", tasks[i])
+			t.Errorf("Task is not nil after take. Task is %d", tasks[i].Id())
 		}
 	}
 }
@@ -587,7 +587,7 @@ func TestFifoQueue_Release(t *testing.T) {
 	//Release
 	err = task.Release()
 	if err != nil {
-		t.Errorf("Failed release task% %s", err.Error())
+		t.Errorf("Failed release task %s", err.Error())
 		return
 	}
 
@@ -610,14 +610,14 @@ func TestFifoQueue_Release(t *testing.T) {
 		}
 
 		if !task.IsTaken() {
-			t.Errorf("Task status after take is not taken. Status = ", task.Status())
+			t.Errorf("Task status after take is not taken. Status = %s", task.Status())
 		}
 
 		err = task.Ack()
 		if err != nil {
 			t.Errorf("Failed ack %s", err.Error())
 		} else if !task.IsDone() {
-			t.Errorf("Task status after take is not done. Status = ", task.Status())
+			t.Errorf("Task status after take is not done. Status = %s", task.Status())
 		}
 	}
 }
@@ -735,14 +735,14 @@ func TestTtlQueue_Put(t *testing.T) {
 		}
 
 		if !task.IsTaken() {
-			t.Errorf("Task status after take is not taken. Status = ", task.Status())
+			t.Errorf("Task status after take is not taken. Status = %s", task.Status())
 		}
 
 		err = task.Ack()
 		if err != nil {
 			t.Errorf("Failed ack %s", err.Error())
 		} else if !task.IsDone() {
-			t.Errorf("Task status after take is not done. Status = ", task.Status())
+			t.Errorf("Task status after take is not done. Status = %s", task.Status())
 		}
 	}
 }
