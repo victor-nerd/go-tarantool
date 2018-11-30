@@ -29,6 +29,7 @@ type ConnectionMulti struct {
 	state    uint32
 	control  chan struct{}
 	pool     map[string]*tarantool.Connection
+	fallback *tarantool.Connection
 }
 
 var _ = tarantool.Connector(&ConnectionMulti{}) // check compatibility with connector interface
@@ -79,6 +80,9 @@ func (connMulti *ConnectionMulti) warmUp() (somebodyAlive bool, errs []error) {
 		conn, err := tarantool.Connect(addr, connMulti.connOpts)
 		errs[i] = err
 		if conn != nil && err == nil {
+			if connMulti.fallback == nil {
+				connMulti.fallback = conn
+			}
 			connMulti.pool[addr] = conn
 			if conn.ConnectedNow() {
 				somebodyAlive = true
@@ -105,6 +109,12 @@ func (connMulti *ConnectionMulti) setConnectionToPool(addr string, conn *taranto
 	connMulti.pool[addr] = conn
 }
 
+func (connMulti *ConnectionMulti) deleteConnectionFromPool(addr string) {
+	connMulti.mutex.Lock()
+	defer connMulti.mutex.Unlock()
+	delete(connMulti.pool, addr)
+}
+
 func (connMulti *ConnectionMulti) checker() {
 	for connMulti.getState() != connClosed {
 		timer := time.NewTimer(connMulti.opts.CheckTimeout)
@@ -115,11 +125,16 @@ func (connMulti *ConnectionMulti) checker() {
 			if connMulti.getState() == connClosed {
 				return
 			}
-			if e.Kind == tarantool.Closed {
+			if e.Conn.ClosedNow() {
 				addr := e.Conn.Addr()
+				if _, ok := connMulti.getConnectionFromPool(addr); !ok {
+					continue
+				}
 				conn, _ := tarantool.Connect(addr, connMulti.connOpts)
 				if conn != nil {
 					connMulti.setConnectionToPool(addr, conn)
+				} else {
+					connMulti.deleteConnectionFromPool(addr)
 				}
 			}
 		case <-timer.C:
@@ -144,14 +159,17 @@ func (connMulti *ConnectionMulti) checker() {
 func (connMulti *ConnectionMulti) getCurrentConnection() *tarantool.Connection {
 	connMulti.mutex.RLock()
 	defer connMulti.mutex.RUnlock()
+
 	for _, addr := range connMulti.addrs {
 		conn := connMulti.pool[addr]
-		if conn != nil && conn.ConnectedNow() {
-			return conn
+		if conn != nil {
+			if conn.ConnectedNow() {
+				return conn
+			}
+			connMulti.fallback = conn
 		}
 	}
-
-	return connMulti.pool[connMulti.addrs[0]]
+	return connMulti.fallback
 }
 
 func (connMulti *ConnectionMulti) ConnectedNow() bool {
@@ -172,6 +190,10 @@ func (connMulti *ConnectionMulti) Close() (err error) {
 			conn.Close()
 		}
 	}
+	if connMulti.fallback != nil {
+		connMulti.fallback.Close()
+	}
+
 	return
 }
 
