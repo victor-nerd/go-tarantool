@@ -58,7 +58,7 @@ type Queue interface {
 
 type queue struct {
 	name string
-	conn *tarantool.Connection
+	conn tarantool.Connector
 	cmds cmd
 }
 
@@ -128,7 +128,7 @@ func (opts Opts) toMap() map[string]interface{} {
 }
 
 // New creates a queue handle
-func New(conn *tarantool.Connection, name string) Queue {
+func New(conn tarantool.Connector, name string) Queue {
 	q := &queue{
 		name: name,
 		conn: conn,
@@ -180,8 +180,9 @@ func (q *queue) put(params ...interface{}) (*Task, error) {
 // The take request searches for a task in the queue.
 func (q *queue) Take() (*Task, error) {
 	var params interface{}
-	if q.conn.ConfiguredTimeout() > 0 {
-		params = (q.conn.ConfiguredTimeout() * 9 / 10).Seconds()
+	timeout := q.conn.ConfiguredTimeout()
+	if timeout > 0 {
+		params = (timeout * 9 / 10).Seconds()
 	}
 	return q.take(params)
 }
@@ -198,8 +199,9 @@ func (q *queue) TakeTimeout(timeout time.Duration) (*Task, error) {
 // The take request searches for a task in the queue.
 func (q *queue) TakeTyped(result interface{}) (*Task, error) {
 	var params interface{}
-	if q.conn.ConfiguredTimeout() > 0 {
-		params = (q.conn.ConfiguredTimeout() * 9 / 10).Seconds()
+	timeout := q.conn.ConfiguredTimeout()
+	if timeout > 0 {
+		params = (timeout * 9 / 10).Seconds()
 	}
 	return q.take(params, result)
 }
