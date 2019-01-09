@@ -112,7 +112,7 @@ of errors that the Tarantool server returns.
 We can now have a closer look at the `example.go` program and make some observations
 about what it does.
 
-```
+```go
 package main
 
 import (
