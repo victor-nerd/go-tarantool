@@ -435,3 +435,25 @@ func (fut *Future) GetTyped(result interface{}) error {
 	fut.err = fut.resp.decodeBodyTyped(result)
 	return fut.err
 }
+
+var closedChan = make(chan struct{})
+
+func init() {
+	close(closedChan)
+}
+
+// WaitChan returns channel which becomes closed when response arrived or error occured
+func (fut *Future) WaitChan() <-chan struct{} {
+	if fut.ready == nil {
+		return closedChan
+	}
+	return fut.ready
+}
+
+// Err returns error set on Future.
+// It waits for future to be set.
+// Note: it doesn't decode body, therefore decoding error are not set here.
+func (fut *Future) Err() error {
+	fut.wait()
+	return fut.err
+}
