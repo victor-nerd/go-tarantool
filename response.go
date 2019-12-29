@@ -2,6 +2,7 @@ package tarantool
 
 import (
 	"fmt"
+
 	"gopkg.in/vmihailenco/msgpack.v2"
 )
 

@@ -2,16 +2,17 @@ package queue_test
 
 import (
 	"fmt"
+	"time"
+
 	"github.com/tarantool/go-tarantool"
 	"github.com/tarantool/go-tarantool/queue"
-	"time"
 )
 
 func ExampleConnection_Queue() {
 	cfg := queue.Cfg{
 		Temporary: false,
 		Kind:      queue.FIFO,
-		Opts:      queue.Opts{
+		Opts: queue.Opts{
 			Ttl: 10 * time.Second,
 		},
 	}

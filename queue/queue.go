@@ -276,8 +276,8 @@ func (q *queue) Kick(count uint64) (uint64, error) {
 
 // Delete the task identified by its id.
 func (q *queue) Delete(taskId uint64) error {
-    _, err := q._delete(taskId)
-    return err
+	_, err := q._delete(taskId)
+	return err
 }
 
 // Return the number of tasks in a queue broken down by task_state, and the number of requests broken down by the type of request.
