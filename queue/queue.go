@@ -103,6 +103,7 @@ type Opts struct {
 	Ttl   time.Duration // task time to live
 	Ttr   time.Duration // task time to execute
 	Delay time.Duration // delayed execution
+	Utube string
 }
 
 func (opts Opts) toMap() map[string]interface{} {
@@ -122,6 +123,10 @@ func (opts Opts) toMap() map[string]interface{} {
 
 	if opts.Pri != 0 {
 		ret["pri"] = opts.Pri
+	}
+
+	if opts.Utube != "" {
+		ret["utube"] = opts.Utube
 	}
 
 	return ret
