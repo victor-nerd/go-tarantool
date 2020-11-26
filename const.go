@@ -13,22 +13,27 @@ const (
 	Call17Request    = 10
 	PingRequest      = 64
 	SubscribeRequest = 66
+	ExecuteRequest   = 0x0b
 
-	KeyCode         = 0x00
-	KeySync         = 0x01
-	KeySpaceNo      = 0x10
-	KeyIndexNo      = 0x11
-	KeyLimit        = 0x12
-	KeyOffset       = 0x13
-	KeyIterator     = 0x14
-	KeyKey          = 0x20
-	KeyTuple        = 0x21
-	KeyFunctionName = 0x22
-	KeyUserName     = 0x23
-	KeyExpression   = 0x27
-	KeyDefTuple     = 0x28
-	KeyData         = 0x30
-	KeyError        = 0x31
+	KeyCode          = 0x00
+	KeySync          = 0x01
+	KeySpaceNo       = 0x10
+	KeyIndexNo       = 0x11
+	KeyLimit         = 0x12
+	KeyOffset        = 0x13
+	KeyIterator      = 0x14
+	KeyKey           = 0x20
+	KeyTuple         = 0x21
+	KeyFunctionName  = 0x22
+	KeyUserName      = 0x23
+	KeyExpression    = 0x27
+	KeyDefTuple      = 0x28
+	KeyData          = 0x30
+	KeyError         = 0x31
+	KeySqlText       = 0x40
+	KeySqlBind       = 0x11
+	KeyIprotoOptions = 0x2b
+	KeySqlProtoMeta  = 0x42
 
 	// https://github.com/fl00r/go-tarantool-1.6/issues/2
 

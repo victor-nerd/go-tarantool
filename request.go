@@ -120,6 +120,11 @@ func (conn *Connection) Eval(expr string, args interface{}) (resp *Response, err
 	return conn.EvalAsync(expr, args).Get()
 }
 
+// It is equal to conn.ExecuteAsync(expr string).Get().
+func (conn *Connection) Execute(expr string) (resp *Response, err error) {
+	return conn.ExecuteAsync(expr).Get()
+}
+
 // single used for conn.GetTyped for decode one tuple
 type single struct {
 	res   interface{}
@@ -343,6 +348,21 @@ func (conn *Connection) EvalAsync(expr string, args interface{}) *Future {
 		enc.EncodeString(expr)
 		enc.EncodeUint64(KeyTuple)
 		return enc.Encode(args)
+	})
+}
+
+// ExecuteAsync sends an sql expression for evaluation and returns Future.
+func (conn *Connection) ExecuteAsync(expr string) *Future {
+	future := conn.newFuture(ExecuteRequest)
+	return future.send(conn, func(enc *msgpack.Encoder) error {
+		enc.EncodeMapLen(3)
+		enc.EncodeUint64(KeySqlText)
+		enc.EncodeString(expr)
+		enc.EncodeUint64(KeySqlBind)
+		enc.EncodeNil()
+		enc.EncodeUint64(KeyIprotoOptions)
+		enc.EncodeNil()
+		return enc.Encode()
 	})
 }
 

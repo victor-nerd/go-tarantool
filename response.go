@@ -86,6 +86,17 @@ func (resp *Response) decodeBody() (err error) {
 				if resp.Data, ok = res.([]interface{}); !ok {
 					return fmt.Errorf("result is not array: %v", res)
 				}
+			case KeySqlProtoMeta:
+				var res interface{}
+				if res, err = d.DecodeMap(); err != nil {
+					return err
+				}
+				if resMap, ok := res.(map[interface{}]interface{}); ok {
+					for _, v := range resMap {
+						resp.Data = append(resp.Data, v)
+					}
+				}
+
 			case KeyError:
 				if resp.Error, err = d.DecodeString(); err != nil {
 					return err
